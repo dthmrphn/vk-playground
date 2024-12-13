@@ -7,6 +7,8 @@ deps = [
   dependency('glm'),
   dependency('fmt'),
   dependency('vulkan'),
+  dependency('dl'),
+  dependency('threads'),
 ]
 
 subdir('shaders')
