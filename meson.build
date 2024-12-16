@@ -11,5 +11,6 @@ deps = [
   dependency('threads'),
 ]
 
+subdir('common')
 subdir('shaders')
 subdir('examples')
