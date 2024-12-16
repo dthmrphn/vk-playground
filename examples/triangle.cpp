@@ -1,12 +1,14 @@
 #include <algorithm>
 #include <stdexcept>
-
-#include <fmt/core.h>
 #include <utility>
 #include <vector>
 
+#include <fmt/core.h>
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+#include <glm/glm.hpp>
 
 #include <vulkan/vulkan_raii.hpp>
 
@@ -76,6 +78,22 @@ class glfw_window {
     }
 };
 
+struct vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static constexpr vk::VertexInputBindingDescription binding_desc() {
+        return {0, sizeof(vertex), vk::VertexInputRate::eVertex};
+    }
+
+    static constexpr std::array<vk::VertexInputAttributeDescription, 2> attribute_desc() {
+        return {{
+            {0, 0, vk::Format::eR32G32Sfloat},
+            {1, 0, vk::Format::eR32G32B32Sfloat},
+        }};
+    }
+};
+
 class triangle {
     vk::raii::Context _context;
     vk::raii::Instance _instance{nullptr};
@@ -108,6 +126,9 @@ class triangle {
     vk::raii::Semaphore _render_finished_semaphore{nullptr};
     vk::raii::Fence _fence{nullptr};
 
+    vk::raii::Buffer _verticies_buffer{nullptr};
+    vk::raii::DeviceMemory _verticies_buffer_memory{nullptr};
+
   public:
     triangle() = default;
 
@@ -119,6 +140,7 @@ class triangle {
     void make_logical_device();
     void make_swapchain(std::uint32_t width, std::uint32_t height);
     void make_renderpass();
+    void make_vertex_buffer();
     void make_pipeline();
     void make_framebuffers();
     void make_command_buffer();
@@ -262,6 +284,39 @@ void triangle::make_renderpass() {
     _render_pass = {_device, rpci};
 }
 
+static std::uint32_t find_memory_type(const vk::PhysicalDeviceMemoryProperties& props, std::uint32_t filter, vk::MemoryPropertyFlags mask) {
+    for (std::uint32_t i = 0; i < props.memoryTypeCount; ++i) {
+        if (filter & (1 << i) && ((props.memoryTypes[i].propertyFlags & mask) == mask)) {
+            return i;
+        }
+    }
+    throw std::runtime_error("failed to find memory type");
+}
+
+void triangle::make_vertex_buffer() {
+    std::array<vertex, 3> verticies = {{
+        {{+0.0, -0.5}, {1.0, 0.0, 0.0}},
+        {{+0.5, +0.5}, {0.0, 1.0, 0.0}},
+        {{-0.5, +0.5}, {0.0, 0.0, 1.0}},
+    }};
+
+    vk::BufferCreateInfo ci{{}, sizeof(vertex) * verticies.size(), vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive};
+    _verticies_buffer = {_device, ci};
+
+    const auto req = _verticies_buffer.getMemoryRequirements();
+    const auto props = _gpu.getMemoryProperties();
+
+    constexpr auto mask{vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+    vk::MemoryAllocateInfo ai{req.size, find_memory_type(props, req.memoryTypeBits, mask)};
+    _verticies_buffer_memory = {_device, ai};
+
+    void* mapped = _verticies_buffer_memory.mapMemory(0, req.size);
+    std::memcpy(mapped, verticies.data(), req.size);
+    _verticies_buffer_memory.unmapMemory();
+
+    _verticies_buffer.bindMemory(_verticies_buffer_memory, 0);
+}
+
 void triangle::make_pipeline() {
     const auto vert_shader = _device.createShaderModule({{}, sizeof(vert_shader_code), vert_shader_code});
     const auto frag_shader = _device.createShaderModule({{}, sizeof(frag_shader_code), frag_shader_code});
@@ -271,7 +326,9 @@ void triangle::make_pipeline() {
         vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eFragment, frag_shader, "main"},
     };
 
-    vk::PipelineVertexInputStateCreateInfo vertex_input_state{};
+    constexpr auto binding_desc = vertex::binding_desc();
+    constexpr auto attribute_desc = vertex::attribute_desc();
+    vk::PipelineVertexInputStateCreateInfo vertex_input_state{{}, binding_desc, attribute_desc};
     vk::PipelineInputAssemblyStateCreateInfo input_assembly_state{{}, vk::PrimitiveTopology::eTriangleList, vk::False};
     vk::PipelineViewportStateCreateInfo viewport_state{{}, 1, nullptr, 1, nullptr};
     vk::PipelineRasterizationStateCreateInfo rasterization_state{
@@ -372,6 +429,7 @@ void triangle::render() {
     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _surface_extent}, clear_value};
     _command_buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
     _command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
+    _command_buffer.bindVertexBuffers(0, *_verticies_buffer, {0});
     vk::Viewport viewport{0.0f, 0.0f, (float)_surface_extent.width, (float)_surface_extent.height, 0.0f, 1.0f};
     _command_buffer.setViewport(0, viewport);
     _command_buffer.setScissor(0, vk::Rect2D{{0, 0}, _surface_extent});
@@ -418,6 +476,7 @@ int main() {
         triangle.make_logical_device();
         triangle.make_swapchain(width, height);
         triangle.make_renderpass();
+        triangle.make_vertex_buffer();
         triangle.make_pipeline();
         triangle.make_framebuffers();
         triangle.make_command_buffer();
