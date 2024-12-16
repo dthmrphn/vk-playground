@@ -109,11 +109,10 @@ struct buffer {
 
     buffer() = default;
 
-    buffer(const vk::raii::Device& dev, const vk::PhysicalDeviceMemoryProperties& props, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags prop) {
+    buffer(const vk::raii::Device& dev, const vk::PhysicalDeviceMemoryProperties& props, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) {
         vk::BufferCreateInfo ci{{}, size, usage, vk::SharingMode::eExclusive};
         buf = {dev, ci};
         const auto req = buf.getMemoryRequirements();
-        constexpr auto mask{vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
         vk::MemoryAllocateInfo ai{req.size, find_memory_type(props, req.memoryTypeBits, mask)};
         mem = {dev, ai};
         buf.bindMemory(mem, 0);
