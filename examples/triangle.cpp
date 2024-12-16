@@ -94,6 +94,38 @@ struct vertex {
     }
 };
 
+static std::uint32_t find_memory_type(const vk::PhysicalDeviceMemoryProperties& props, std::uint32_t filter, vk::MemoryPropertyFlags mask) {
+    for (std::uint32_t i = 0; i < props.memoryTypeCount; ++i) {
+        if (filter & (1 << i) && ((props.memoryTypes[i].propertyFlags & mask) == mask)) {
+            return i;
+        }
+    }
+    throw std::runtime_error("failed to find memory type");
+}
+
+struct buffer {
+    vk::raii::Buffer buf{nullptr};
+    vk::raii::DeviceMemory mem{nullptr};
+
+    buffer() = default;
+
+    buffer(const vk::raii::Device& dev, const vk::PhysicalDeviceMemoryProperties& props, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags prop) {
+        vk::BufferCreateInfo ci{{}, size, usage, vk::SharingMode::eExclusive};
+        buf = {dev, ci};
+        const auto req = buf.getMemoryRequirements();
+        constexpr auto mask{vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+        vk::MemoryAllocateInfo ai{req.size, find_memory_type(props, req.memoryTypeBits, mask)};
+        mem = {dev, ai};
+        buf.bindMemory(mem, 0);
+    }
+
+    void copy_from_host(void* data, vk::DeviceSize size) const {
+        void* mapped = mem.mapMemory(0, size);
+        std::memcpy(mapped, data, size);
+        mem.unmapMemory();
+    }
+};
+
 class triangle {
     vk::raii::Context _context;
     vk::raii::Instance _instance{nullptr};
@@ -126,8 +158,7 @@ class triangle {
     vk::raii::Semaphore _render_finished_semaphore{nullptr};
     vk::raii::Fence _fence{nullptr};
 
-    vk::raii::Buffer _verticies_buffer{nullptr};
-    vk::raii::DeviceMemory _verticies_buffer_memory{nullptr};
+    buffer _verticies_buffer;
 
   public:
     triangle() = default;
@@ -284,15 +315,6 @@ void triangle::make_renderpass() {
     _render_pass = {_device, rpci};
 }
 
-static std::uint32_t find_memory_type(const vk::PhysicalDeviceMemoryProperties& props, std::uint32_t filter, vk::MemoryPropertyFlags mask) {
-    for (std::uint32_t i = 0; i < props.memoryTypeCount; ++i) {
-        if (filter & (1 << i) && ((props.memoryTypes[i].propertyFlags & mask) == mask)) {
-            return i;
-        }
-    }
-    throw std::runtime_error("failed to find memory type");
-}
-
 void triangle::make_vertex_buffer() {
     std::array<vertex, 3> verticies = {{
         {{+0.0, -0.5}, {1.0, 0.0, 0.0}},
@@ -300,21 +322,11 @@ void triangle::make_vertex_buffer() {
         {{-0.5, +0.5}, {0.0, 0.0, 1.0}},
     }};
 
-    vk::BufferCreateInfo ci{{}, sizeof(vertex) * verticies.size(), vk::BufferUsageFlagBits::eVertexBuffer, vk::SharingMode::eExclusive};
-    _verticies_buffer = {_device, ci};
-
-    const auto req = _verticies_buffer.getMemoryRequirements();
     const auto props = _gpu.getMemoryProperties();
-
-    constexpr auto mask{vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
-    vk::MemoryAllocateInfo ai{req.size, find_memory_type(props, req.memoryTypeBits, mask)};
-    _verticies_buffer_memory = {_device, ai};
-
-    void* mapped = _verticies_buffer_memory.mapMemory(0, req.size);
-    std::memcpy(mapped, verticies.data(), req.size);
-    _verticies_buffer_memory.unmapMemory();
-
-    _verticies_buffer.bindMemory(_verticies_buffer_memory, 0);
+    constexpr auto mask = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+    constexpr auto size = sizeof(vertex) * verticies.size();
+    _verticies_buffer = {_device, props, size, vk::BufferUsageFlagBits::eVertexBuffer, mask};
+    _verticies_buffer.copy_from_host(verticies.data(), size);
 }
 
 void triangle::make_pipeline() {
@@ -429,7 +441,7 @@ void triangle::render() {
     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _surface_extent}, clear_value};
     _command_buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
     _command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
-    _command_buffer.bindVertexBuffers(0, *_verticies_buffer, {0});
+    _command_buffer.bindVertexBuffers(0, *_verticies_buffer.buf, {0});
     vk::Viewport viewport{0.0f, 0.0f, (float)_surface_extent.width, (float)_surface_extent.height, 0.0f, 1.0f};
     _command_buffer.setViewport(0, viewport);
     _command_buffer.setScissor(0, vk::Rect2D{{0, 0}, _surface_extent});
