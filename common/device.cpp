@@ -90,10 +90,14 @@ vk::raii::Queue vulkan_device::make_present_queue() const {
     return {nullptr};
 }
 
-vk::Instance vulkan_device::instance() const {
+const vk::raii::PhysicalDevice& vulkan_device::physical() const {
+    return _physical_dev;
+}
+
+const vk::raii::Instance& vulkan_device::instance() const {
     return _instance;
 }
 
-vk::Device vulkan_device::device() const {
+const vk::raii::Device& vulkan_device::logical() const {
     return _logical_dev;
 }

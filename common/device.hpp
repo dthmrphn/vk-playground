@@ -25,8 +25,9 @@ class vulkan_device {
 
     std::uint32_t queue_family_index(vk::QueueFlags flags) const;
 
-    vk::Instance instance() const;
-    vk::Device device() const;
+    const vk::raii::PhysicalDevice& physical() const;
+    const vk::raii::Instance& instance() const;
+    const vk::raii::Device& logical() const;
 
     vk::raii::Queue make_graphic_queue() const;
     vk::raii::Queue make_present_queue() const;
