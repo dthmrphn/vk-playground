@@ -106,6 +106,7 @@ static std::uint32_t find_memory_type(const vk::PhysicalDeviceMemoryProperties& 
 struct buffer {
     vk::raii::Buffer buf{nullptr};
     vk::raii::DeviceMemory mem{nullptr};
+    void* mapped{nullptr};
 
     buffer() = default;
 
@@ -116,12 +117,11 @@ struct buffer {
         vk::MemoryAllocateInfo ai{req.size, find_memory_type(props, req.memoryTypeBits, mask)};
         mem = {dev, ai};
         buf.bindMemory(mem, 0);
+        mapped = mem.mapMemory(0, size);
     }
 
     void copy_from_host(void* data, vk::DeviceSize size) const {
-        void* mapped = mem.mapMemory(0, size);
         std::memcpy(mapped, data, size);
-        mem.unmapMemory();
     }
 };
 
@@ -321,11 +321,32 @@ void triangle::make_vertex_buffer() {
         {{-0.5, +0.5}, {0.0, 0.0, 1.0}},
     }};
 
-    const auto props = _gpu.getMemoryProperties();
-    constexpr auto mask = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
     constexpr auto size = sizeof(vertex) * verticies.size();
-    _verticies_buffer = {_device, props, size, vk::BufferUsageFlagBits::eVertexBuffer, mask};
-    _verticies_buffer.copy_from_host(verticies.data(), size);
+    const auto props = _gpu.getMemoryProperties();
+    buffer staging{_device,
+                   props,
+                   size,
+                   vk::BufferUsageFlagBits::eTransferSrc,
+                   vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+    staging.copy_from_host(verticies.data(), size);
+
+    _verticies_buffer = {_device,
+                         props,
+                         size,
+                         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal};
+    
+    vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
+    vk::raii::CommandBuffer buffer {std::move(vk::raii::CommandBuffers{_device, ai}.front())};
+    
+    buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    vk::BufferCopy bc{0, 0, size};
+    buffer.copyBuffer(staging.buf, _verticies_buffer.buf, bc);
+    buffer.end();
+    
+    vk::SubmitInfo si{{}, {}, *buffer};
+    _graphics_queue.submit(si);
+    _graphics_queue.waitIdle();
 }
 
 void triangle::make_pipeline() {
@@ -486,11 +507,11 @@ int main() {
         triangle.make_surface(surface, width, height);
         triangle.make_logical_device();
         triangle.make_swapchain(width, height);
+        triangle.make_command_buffer();
         triangle.make_renderpass();
         triangle.make_vertex_buffer();
         triangle.make_pipeline();
         triangle.make_framebuffers();
-        triangle.make_command_buffer();
         triangle.make_synchronization();
 
         window.loop_handler([&triangle]() {
