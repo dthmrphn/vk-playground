@@ -158,6 +158,7 @@ class triangle {
     vk::raii::Fence _fence{nullptr};
 
     buffer _verticies_buffer;
+    buffer _indices_buffer;
 
   public:
     triangle() = default;
@@ -171,6 +172,7 @@ class triangle {
     void make_swapchain(std::uint32_t width, std::uint32_t height);
     void make_renderpass();
     void make_vertex_buffer();
+    void make_indices_buffer();
     void make_pipeline();
     void make_framebuffers();
     void make_command_buffer();
@@ -349,6 +351,40 @@ void triangle::make_vertex_buffer() {
     _graphics_queue.waitIdle();
 }
 
+void triangle::make_indices_buffer() {
+    std::array<std::uint32_t, 6> indicies = {
+        0, 1, 2
+    };
+
+    constexpr auto size = sizeof(std::uint32_t) * indicies.size();
+    const auto props = _gpu.getMemoryProperties();
+    buffer staging{_device,
+                   props,
+                   size,
+                   vk::BufferUsageFlagBits::eTransferSrc,
+                   vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+    staging.copy_from_host(indicies.data(), size);
+
+    _indices_buffer = {_device,
+                         props,
+                         size,
+                         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal};
+    
+    vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
+    vk::raii::CommandBuffer buffer {std::move(vk::raii::CommandBuffers{_device, ai}.front())};
+    
+    buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    vk::BufferCopy bc{0, 0, size};
+    buffer.copyBuffer(staging.buf, _indices_buffer.buf, bc);
+    buffer.end();
+    
+    vk::SubmitInfo si{{}, {}, *buffer};
+    _graphics_queue.submit(si);
+    _graphics_queue.waitIdle();
+}
+
+
 void triangle::make_pipeline() {
     const auto vert_shader = _device.createShaderModule({{}, sizeof(vert_shader_code), vert_shader_code});
     const auto frag_shader = _device.createShaderModule({{}, sizeof(frag_shader_code), frag_shader_code});
@@ -462,10 +498,11 @@ void triangle::render() {
     _command_buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
     _command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
     _command_buffer.bindVertexBuffers(0, *_verticies_buffer.buf, {0});
+    _command_buffer.bindIndexBuffer(_indices_buffer.buf, 0, vk::IndexType::eUint32);
     vk::Viewport viewport{0.0f, 0.0f, (float)_surface_extent.width, (float)_surface_extent.height, 0.0f, 1.0f};
     _command_buffer.setViewport(0, viewport);
     _command_buffer.setScissor(0, vk::Rect2D{{0, 0}, _surface_extent});
-    _command_buffer.draw(3, 1, 0, 0);
+    _command_buffer.drawIndexed(3, 1, 0, 0, 0);
     _command_buffer.endRenderPass();
     _command_buffer.end();
 
@@ -510,6 +547,7 @@ int main() {
         triangle.make_command_buffer();
         triangle.make_renderpass();
         triangle.make_vertex_buffer();
+        triangle.make_indices_buffer();
         triangle.make_pipeline();
         triangle.make_framebuffers();
         triangle.make_synchronization();
