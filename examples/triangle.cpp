@@ -8,7 +8,9 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <vulkan/vulkan_raii.hpp>
 
@@ -94,6 +96,16 @@ struct vertex {
     }
 };
 
+struct uniform {
+    glm::mat4 m;
+    glm::mat4 v;
+    glm::mat4 p;
+
+    static constexpr vk::DescriptorSetLayoutBinding layout_binding() {
+        return {0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex};
+    }
+};
+
 static std::uint32_t find_memory_type(const vk::PhysicalDeviceMemoryProperties& props, std::uint32_t filter, vk::MemoryPropertyFlags mask) {
     for (std::uint32_t i = 0; i < props.memoryTypeCount; ++i) {
         if (filter & (1 << i) && ((props.memoryTypes[i].propertyFlags & mask) == mask)) {
@@ -150,6 +162,7 @@ class triangle {
 
     vk::raii::RenderPass _render_pass{nullptr};
     vk::raii::Pipeline _pipeline{nullptr};
+    vk::raii::PipelineLayout _pipeline_layout{nullptr};
 
     std::vector<vk::raii::Framebuffer> _framebuffers{};
 
@@ -162,6 +175,11 @@ class triangle {
 
     buffer _verticies_buffer;
     buffer _indices_buffer;
+    buffer _uniform_buffer;
+
+    vk::raii::DescriptorSetLayout _descriptor_layout{nullptr};
+    vk::raii::DescriptorPool _descriptor_pool{nullptr};
+    vk::raii::DescriptorSet _descriptor_set{nullptr};
 
   public:
     triangle() = default;
@@ -176,6 +194,8 @@ class triangle {
     void make_renderpass();
     void make_vertex_buffer();
     void make_indices_buffer();
+    void make_uniform_buffer();
+    void make_descriptor_set();
     void make_pipeline();
     void make_framebuffers();
     void make_command_buffer();
@@ -386,6 +406,34 @@ void triangle::make_indices_buffer() {
     _graphics_queue.waitIdle();
 }
 
+void triangle::make_uniform_buffer() {
+    constexpr auto size = sizeof(uniform);
+    const auto props = _gpu.getMemoryProperties();
+
+    _uniform_buffer = {_device,
+                       props,
+                       size,
+                       vk::BufferUsageFlagBits::eUniformBuffer,
+                       vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+}
+
+void triangle::make_descriptor_set() {
+    constexpr auto layout_binding = uniform::layout_binding();
+    vk::DescriptorSetLayoutCreateInfo dslci{{}, layout_binding};
+    _descriptor_layout = {_device, dslci};
+
+    vk::DescriptorPoolSize size{vk::DescriptorType::eUniformBuffer, 1};
+    vk::DescriptorPoolCreateInfo dpci{vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, size};
+    _descriptor_pool = {_device, dpci};
+
+    vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_descriptor_layout};
+    _descriptor_set = std::move(_device.allocateDescriptorSets(dsai).front());
+    
+    vk::DescriptorBufferInfo dbi{_uniform_buffer.buf, 0, sizeof(uniform)};
+    vk::WriteDescriptorSet wds{_descriptor_set, 0, 0, vk::DescriptorType::eUniformBuffer, {}, dbi};
+    _device.updateDescriptorSets(wds, nullptr);
+}
+
 void triangle::make_pipeline() {
     const auto vert_shader = _device.createShaderModule({{}, sizeof(vert_shader_code), vert_shader_code});
     const auto frag_shader = _device.createShaderModule({{}, sizeof(frag_shader_code), frag_shader_code});
@@ -436,7 +484,9 @@ void triangle::make_pipeline() {
 
     vk::DynamicState dynamic_states[] = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
     vk::PipelineDynamicStateCreateInfo dynamic_state{{}, dynamic_states};
-    const auto pipeline_layout = _device.createPipelineLayout({{}, 0, nullptr, 0, nullptr});
+    
+    vk::PipelineLayoutCreateInfo plci{{}, *_descriptor_layout};
+    _pipeline_layout = {_device, plci};
 
     vk::GraphicsPipelineCreateInfo pci{
         {},
@@ -450,11 +500,11 @@ void triangle::make_pipeline() {
         nullptr,
         &colorblend_state,
         &dynamic_state,
-        pipeline_layout,
+        _pipeline_layout,
         _render_pass,
     };
 
-    _pipeline = _device.createGraphicsPipeline(VK_NULL_HANDLE, pci);
+    _pipeline = {_device, nullptr, pci};
 }
 
 void triangle::make_framebuffers() {
@@ -494,10 +544,19 @@ void triangle::render() {
     _command_buffer.reset();
     _command_buffer.begin({});
 
+    const float time = glfwGetTime();
+    uniform ubo{
+        glm::rotate(glm::mat4(1.0f), time, glm::vec3(0.0f, 0.0f, 1.0f)),
+        glm::mat4(1.0f),
+        glm::mat4(1.0f),
+    };
+    _uniform_buffer.copy_from_host(&ubo, sizeof(ubo));
+
     vk::ClearValue clear_value{vk::ClearColorValue{0.0f, 0.0f, 0.0f, 1.0f}};
     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _surface_extent}, clear_value};
     _command_buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
     _command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
+    _command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipeline_layout,  0, {_descriptor_set}, nullptr);
     _command_buffer.bindVertexBuffers(0, *_verticies_buffer.buf, {0});
     _command_buffer.bindIndexBuffer(_indices_buffer.buf, 0, vk::IndexType::eUint32);
     vk::Viewport viewport{0.0f, 0.0f, (float)_surface_extent.width, (float)_surface_extent.height, 0.0f, 1.0f};
@@ -549,6 +608,8 @@ int main() {
         triangle.make_renderpass();
         triangle.make_vertex_buffer();
         triangle.make_indices_buffer();
+        triangle.make_uniform_buffer();
+        triangle.make_descriptor_set();
         triangle.make_pipeline();
         triangle.make_framebuffers();
         triangle.make_synchronization();
