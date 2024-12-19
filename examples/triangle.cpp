@@ -117,7 +117,10 @@ struct buffer {
         vk::MemoryAllocateInfo ai{req.size, find_memory_type(props, req.memoryTypeBits, mask)};
         mem = {dev, ai};
         buf.bindMemory(mem, 0);
-        mapped = mem.mapMemory(0, size);
+
+        if (mask & vk::MemoryPropertyFlagBits::eHostVisible) {
+            mapped = mem.mapMemory(0, size);
+        }
     }
 
     void copy_from_host(void* data, vk::DeviceSize size) const {
@@ -337,15 +340,15 @@ void triangle::make_vertex_buffer() {
                          size,
                          vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
                          vk::MemoryPropertyFlagBits::eDeviceLocal};
-    
+
     vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
-    vk::raii::CommandBuffer buffer {std::move(vk::raii::CommandBuffers{_device, ai}.front())};
-    
+    vk::raii::CommandBuffer buffer{std::move(vk::raii::CommandBuffers{_device, ai}.front())};
+
     buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
     vk::BufferCopy bc{0, 0, size};
     buffer.copyBuffer(staging.buf, _verticies_buffer.buf, bc);
     buffer.end();
-    
+
     vk::SubmitInfo si{{}, {}, *buffer};
     _graphics_queue.submit(si);
     _graphics_queue.waitIdle();
@@ -353,8 +356,7 @@ void triangle::make_vertex_buffer() {
 
 void triangle::make_indices_buffer() {
     std::array<std::uint32_t, 6> indicies = {
-        0, 1, 2
-    };
+        0, 1, 2};
 
     constexpr auto size = sizeof(std::uint32_t) * indicies.size();
     const auto props = _gpu.getMemoryProperties();
@@ -366,24 +368,23 @@ void triangle::make_indices_buffer() {
     staging.copy_from_host(indicies.data(), size);
 
     _indices_buffer = {_device,
-                         props,
-                         size,
-                         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                         vk::MemoryPropertyFlagBits::eDeviceLocal};
-    
+                       props,
+                       size,
+                       vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                       vk::MemoryPropertyFlagBits::eDeviceLocal};
+
     vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
-    vk::raii::CommandBuffer buffer {std::move(vk::raii::CommandBuffers{_device, ai}.front())};
-    
+    vk::raii::CommandBuffer buffer{std::move(vk::raii::CommandBuffers{_device, ai}.front())};
+
     buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
     vk::BufferCopy bc{0, 0, size};
     buffer.copyBuffer(staging.buf, _indices_buffer.buf, bc);
     buffer.end();
-    
+
     vk::SubmitInfo si{{}, {}, *buffer};
     _graphics_queue.submit(si);
     _graphics_queue.waitIdle();
 }
-
 
 void triangle::make_pipeline() {
     const auto vert_shader = _device.createShaderModule({{}, sizeof(vert_shader_code), vert_shader_code});
