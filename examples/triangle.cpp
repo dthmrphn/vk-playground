@@ -340,10 +340,11 @@ void triangle::make_renderpass() {
 }
 
 void triangle::make_vertex_buffer() {
-    std::array<vertex, 3> verticies = {{
-        {{+0.0, -0.5}, {1.0, 0.0, 0.0}},
+    std::array<vertex, 4> verticies = {{
+        {{-0.5, +0.5}, {1.0, 0.0, 0.0}},
         {{+0.5, +0.5}, {0.0, 1.0, 0.0}},
-        {{-0.5, +0.5}, {0.0, 0.0, 1.0}},
+        {{+0.5, -0.5}, {0.0, 0.0, 1.0}},
+        {{-0.5, -0.5}, {1.0, 1.0, 1.0}},
     }};
 
     constexpr auto size = sizeof(vertex) * verticies.size();
@@ -376,7 +377,7 @@ void triangle::make_vertex_buffer() {
 
 void triangle::make_indices_buffer() {
     std::array<std::uint32_t, 6> indicies = {
-        0, 1, 2};
+        0, 1, 2, 2, 3, 0};
 
     constexpr auto size = sizeof(std::uint32_t) * indicies.size();
     const auto props = _gpu.getMemoryProperties();
@@ -454,7 +455,7 @@ void triangle::make_pipeline() {
         vk::False,
         vk::PolygonMode::eFill,
         vk::CullModeFlagBits::eBack,
-        vk::FrontFace::eClockwise,
+        vk::FrontFace::eCounterClockwise,
         vk::False,
         0.0f,
         0.0f,
@@ -562,7 +563,7 @@ void triangle::render() {
     vk::Viewport viewport{0.0f, 0.0f, (float)_surface_extent.width, (float)_surface_extent.height, 0.0f, 1.0f};
     _command_buffer.setViewport(0, viewport);
     _command_buffer.setScissor(0, vk::Rect2D{{0, 0}, _surface_extent});
-    _command_buffer.drawIndexed(3, 1, 0, 0, 0);
+    _command_buffer.drawIndexed(6, 1, 0, 0, 0);
     _command_buffer.endRenderPass();
     _command_buffer.end();
 
