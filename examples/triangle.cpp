@@ -256,7 +256,7 @@ void triangle::make_swapchain(std::uint32_t width, std::uint32_t height) {
     const auto formats = _gpu.getSurfaceFormatsKHR(_surface);
     _surface_format = formats[0];
     for (const auto& f : formats) {
-        if (f.format == vk::Format::eB8G8R8Srgb && f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+        if (f.format == vk::Format::eB8G8R8A8Unorm && f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
             _surface_format = f;
         }
     }
@@ -268,7 +268,7 @@ void triangle::make_swapchain(std::uint32_t width, std::uint32_t height) {
     };
 
     const auto pre_transform = capabilities.currentTransform;
-    const auto composite_alpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
+    const auto composite_alpha = vk::CompositeAlphaFlagBitsKHR::eInherit;
     const auto present_mode = vk::PresentModeKHR::eMailbox;
 
     const std::uint32_t qfi[] = {_graphics_queue_index, _present_queue_index};
@@ -465,9 +465,9 @@ void triangle::make_pipeline() {
     vk::PipelineMultisampleStateCreateInfo multisample_state{{}, vk::SampleCountFlagBits::e1, vk::False};
     vk::ColorComponentFlags color_flags(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
     vk::PipelineColorBlendAttachmentState colorblend_attachment{
-        vk::False,
-        vk::BlendFactor::eZero,
-        vk::BlendFactor::eZero,
+        vk::True,
+        vk::BlendFactor::eSrcAlpha,
+        vk::BlendFactor::eOneMinusSrcAlpha,
         vk::BlendOp::eAdd,
         vk::BlendFactor::eZero,
         vk::BlendFactor::eZero,
