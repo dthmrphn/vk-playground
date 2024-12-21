@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -86,16 +87,18 @@ class glfw_window {
 struct vertex {
     glm::vec2 pos;
     glm::vec3 color;
+    glm::vec2 coord;
 
     static constexpr vk::VertexInputBindingDescription binding_desc() {
         return {0, sizeof(vertex), vk::VertexInputRate::eVertex};
     }
 
-    static constexpr std::array<vk::VertexInputAttributeDescription, 2> attribute_desc() {
-        return {{
-            {0, 0, vk::Format::eR32G32Sfloat},
-            {1, 0, vk::Format::eR32G32B32Sfloat},
-        }};
+    static constexpr std::array<vk::VertexInputAttributeDescription, 3> attribute_desc() {
+        return {
+            vk::VertexInputAttributeDescription{0, 0, vk::Format::eR32G32Sfloat, offsetof(vertex, pos)},
+            vk::VertexInputAttributeDescription{1, 0, vk::Format::eR32G32B32Sfloat, offsetof(vertex, color)},
+            vk::VertexInputAttributeDescription{2, 0, vk::Format::eR32G32Sfloat, offsetof(vertex, coord)},
+        };
     }
 };
 
@@ -192,6 +195,10 @@ struct texture {
             {},
         };
         sampler = {device, sic};
+    }
+
+    static constexpr vk::DescriptorSetLayoutBinding layout_binding() {
+        return {1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment};
     }
 };
 
@@ -478,10 +485,10 @@ void triangle::make_texture_image() {
 
 void triangle::make_vertex_buffer() {
     std::array<vertex, 4> verticies = {{
-        {{-0.5, +0.5}, {1.0, 0.0, 0.0}},
-        {{+0.5, +0.5}, {0.0, 1.0, 0.0}},
-        {{+0.5, -0.5}, {0.0, 0.0, 1.0}},
-        {{-0.5, -0.5}, {1.0, 1.0, 1.0}},
+        {{-0.5, +0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+        {{+0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+        {{+0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+        {{-0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
     }};
 
     constexpr auto size = sizeof(vertex) * verticies.size();
@@ -556,20 +563,32 @@ void triangle::make_uniform_buffer() {
 }
 
 void triangle::make_descriptor_set() {
-    constexpr auto layout_binding = uniform::layout_binding();
-    vk::DescriptorSetLayoutCreateInfo dslci{{}, layout_binding};
+    vk::DescriptorSetLayoutBinding bindings[] = {
+        uniform::layout_binding(),
+        texture::layout_binding(),
+    };
+
+    vk::DescriptorSetLayoutCreateInfo dslci{{}, bindings};
     _descriptor_layout = {_device, dslci};
 
-    vk::DescriptorPoolSize size{vk::DescriptorType::eUniformBuffer, 1};
-    vk::DescriptorPoolCreateInfo dpci{vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, size};
+    vk::DescriptorPoolSize sizes[] = {
+        {vk::DescriptorType::eUniformBuffer, 1},
+        {vk::DescriptorType::eCombinedImageSampler, 1},
+    };
+
+    vk::DescriptorPoolCreateInfo dpci{vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, sizes};
     _descriptor_pool = {_device, dpci};
 
     vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_descriptor_layout};
     _descriptor_set = std::move(_device.allocateDescriptorSets(dsai).front());
 
     vk::DescriptorBufferInfo dbi{_uniform_buffer.buf, 0, sizeof(uniform)};
-    vk::WriteDescriptorSet wds{_descriptor_set, 0, 0, vk::DescriptorType::eUniformBuffer, {}, dbi};
-    _device.updateDescriptorSets(wds, nullptr);
+    vk::DescriptorImageInfo dii{_texture.sampler, _texture.view, vk::ImageLayout::eShaderReadOnlyOptimal};
+    vk::WriteDescriptorSet wdss[] = {
+        {_descriptor_set, 0, 0, vk::DescriptorType::eUniformBuffer, {}, dbi},
+        {_descriptor_set, 1, 0, vk::DescriptorType::eCombinedImageSampler, dii},
+    };
+    _device.updateDescriptorSets(wdss, nullptr);
 }
 
 void triangle::make_pipeline() {
