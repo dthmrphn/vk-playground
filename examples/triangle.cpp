@@ -14,6 +14,9 @@
 
 #include <vulkan/vulkan_raii.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 constexpr static const char* enabled_layers[] = {
     "VK_LAYER_KHRONOS_validation",
 };
@@ -136,7 +139,59 @@ struct buffer {
     }
 
     void copy_from_host(void* data, vk::DeviceSize size) const {
+        if (!mapped) {
+            throw std::runtime_error("device memory isn't mapped for buffer");
+        }
         std::memcpy(mapped, data, size);
+    }
+};
+
+struct texture {
+    vk::raii::Image img{nullptr};
+    vk::raii::ImageView view{nullptr};
+    vk::raii::DeviceMemory mem{nullptr};
+    vk::raii::Sampler sampler{nullptr};
+
+    texture() = default;
+
+    texture(const vk::raii::Device& device, const vk::PhysicalDeviceMemoryProperties& props, std::uint32_t width, std::uint32_t height) {
+        vk::ImageCreateInfo ici{
+            {},
+            vk::ImageType::e2D,
+            vk::Format::eR8G8B8A8Srgb,
+            {width, height, 1},
+            1,
+            1,
+            vk::SampleCountFlagBits::e1,
+            vk::ImageTiling::eOptimal,
+            vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+            vk::SharingMode::eExclusive,
+        };
+
+        img = {device, ici};
+
+        const auto req = img.getMemoryRequirements();
+        vk::MemoryAllocateInfo mai{req.size, find_memory_type(props, req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)};
+        mem = {device, mai};
+        img.bindMemory(mem, 0);
+
+        vk::ImageViewCreateInfo ivci{
+            {},
+            img,
+            vk::ImageViewType::e2D,
+            vk::Format::eR8G8B8A8Srgb,
+            {},
+            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+        view = {device, ivci};
+
+        vk::SamplerCreateInfo sic{
+            {},
+            vk::Filter::eLinear,
+            vk::Filter::eLinear,
+            {},
+        };
+        sampler = {device, sic};
     }
 };
 
@@ -177,6 +232,8 @@ class triangle {
     buffer _indices_buffer;
     buffer _uniform_buffer;
 
+    texture _texture;
+
     vk::raii::DescriptorSetLayout _descriptor_layout{nullptr};
     vk::raii::DescriptorPool _descriptor_pool{nullptr};
     vk::raii::DescriptorSet _descriptor_set{nullptr};
@@ -192,6 +249,7 @@ class triangle {
     void make_logical_device();
     void make_swapchain(std::uint32_t width, std::uint32_t height);
     void make_renderpass();
+    void make_texture_image();
     void make_vertex_buffer();
     void make_indices_buffer();
     void make_uniform_buffer();
@@ -268,7 +326,7 @@ void triangle::make_swapchain(std::uint32_t width, std::uint32_t height) {
     };
 
     const auto pre_transform = capabilities.currentTransform;
-    const auto composite_alpha = vk::CompositeAlphaFlagBitsKHR::eInherit;
+    const auto composite_alpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
     const auto present_mode = vk::PresentModeKHR::eMailbox;
 
     const std::uint32_t qfi[] = {_graphics_queue_index, _present_queue_index};
@@ -337,6 +395,85 @@ void triangle::make_renderpass() {
     };
 
     _render_pass = {_device, rpci};
+}
+
+void triangle::make_texture_image() {
+    int w{}, h{}, c{}, wc{4};
+    auto data = stbi_load("textures/vulkan.png", &w, &h, &c, wc);
+    if (!data) {
+        throw std::runtime_error("failed to load image");
+    }
+
+    std::uint32_t width = w;
+    std::uint32_t height = h;
+
+    const vk::DeviceSize size = w * h * wc;
+    const auto props = _gpu.getMemoryProperties();
+    buffer staging{_device,
+                   props,
+                   size,
+                   vk::BufferUsageFlagBits::eTransferSrc,
+                   vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent};
+    staging.copy_from_host(data, size);
+
+    _texture = {_device, props, width, height};
+
+    vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
+    vk::raii::CommandBuffer buffer{std::move(vk::raii::CommandBuffers{_device, ai}.front())};
+
+    buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+    {
+        vk::ImageMemoryBarrier barrier{
+            {},
+            vk::AccessFlagBits::eTransferWrite,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eTransferDstOptimal,
+            {},
+            {},
+            _texture.img,
+            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+
+        vk::PipelineStageFlags src_stage{vk::PipelineStageFlagBits::eTopOfPipe};
+        vk::PipelineStageFlags dst_stage{vk::PipelineStageFlagBits::eTransfer};
+
+        buffer.pipelineBarrier(src_stage, dst_stage, {}, nullptr, nullptr, barrier);
+    }
+
+    vk::BufferImageCopy bic{
+        0,
+        0,
+        0,
+        {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        {0, 0, 0},
+        {width, height, 1},
+    };
+    buffer.copyBufferToImage(staging.buf, _texture.img, vk::ImageLayout::eTransferDstOptimal, bic);
+
+    {
+        vk::ImageMemoryBarrier barrier{
+            vk::AccessFlagBits::eTransferWrite,
+            vk::AccessFlagBits::eShaderRead,
+            vk::ImageLayout::eTransferDstOptimal,
+            vk::ImageLayout::eShaderReadOnlyOptimal,
+            {},
+            {},
+            _texture.img,
+            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+
+        vk::PipelineStageFlags src_stage{vk::PipelineStageFlagBits::eTransfer};
+        vk::PipelineStageFlags dst_stage{vk::PipelineStageFlagBits::eFragmentShader};
+
+        buffer.pipelineBarrier(src_stage, dst_stage, {}, nullptr, nullptr, barrier);
+    }
+
+    buffer.end();
+
+    vk::SubmitInfo si{{}, {}, *buffer};
+    _graphics_queue.submit(si);
+    _graphics_queue.waitIdle();
 }
 
 void triangle::make_vertex_buffer() {
@@ -429,7 +566,7 @@ void triangle::make_descriptor_set() {
 
     vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_descriptor_layout};
     _descriptor_set = std::move(_device.allocateDescriptorSets(dsai).front());
-    
+
     vk::DescriptorBufferInfo dbi{_uniform_buffer.buf, 0, sizeof(uniform)};
     vk::WriteDescriptorSet wds{_descriptor_set, 0, 0, vk::DescriptorType::eUniformBuffer, {}, dbi};
     _device.updateDescriptorSets(wds, nullptr);
@@ -485,7 +622,7 @@ void triangle::make_pipeline() {
 
     vk::DynamicState dynamic_states[] = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
     vk::PipelineDynamicStateCreateInfo dynamic_state{{}, dynamic_states};
-    
+
     vk::PipelineLayoutCreateInfo plci{{}, *_descriptor_layout};
     _pipeline_layout = {_device, plci};
 
@@ -557,7 +694,7 @@ void triangle::render() {
     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _surface_extent}, clear_value};
     _command_buffer.beginRenderPass(rpbi, vk::SubpassContents::eInline);
     _command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
-    _command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipeline_layout,  0, {_descriptor_set}, nullptr);
+    _command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipeline_layout, 0, {_descriptor_set}, nullptr);
     _command_buffer.bindVertexBuffers(0, *_verticies_buffer.buf, {0});
     _command_buffer.bindIndexBuffer(_indices_buffer.buf, 0, vk::IndexType::eUint32);
     vk::Viewport viewport{0.0f, 0.0f, (float)_surface_extent.width, (float)_surface_extent.height, 0.0f, 1.0f};
@@ -607,6 +744,7 @@ int main() {
         triangle.make_swapchain(width, height);
         triangle.make_command_buffer();
         triangle.make_renderpass();
+        triangle.make_texture_image();
         triangle.make_vertex_buffer();
         triangle.make_indices_buffer();
         triangle.make_uniform_buffer();
