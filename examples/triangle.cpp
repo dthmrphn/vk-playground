@@ -202,6 +202,70 @@ struct texture {
     }
 };
 
+struct swapchain {
+    vk::raii::SurfaceKHR _surface{nullptr};
+    vk::raii::SwapchainKHR _swapchain{nullptr};
+    vk::SurfaceFormatKHR _format;
+    vk::Extent2D _extent;
+
+    std::vector<vk::raii::ImageView> _image_views{};
+
+    swapchain(const vk::raii::Device& dev, const vk::raii::PhysicalDevice& gpu, const vk::raii::Instance& instance, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h) {
+        _surface = {instance, surf};
+        const auto formats = gpu.getSurfaceFormatsKHR(_surface);
+        _format = formats[0];
+        for (const auto& f : formats) {
+            if (f.format == vk::Format::eB8G8R8A8Unorm && f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+                _format = f;
+            }
+        }
+
+        const auto capabilities = gpu.getSurfaceCapabilitiesKHR(_surface);
+        _extent = vk::Extent2D{
+            std::clamp(w, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+            std::clamp(h, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
+        };
+
+        const auto pre_transform = capabilities.currentTransform;
+        const auto composite_alpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
+        const auto present_mode = vk::PresentModeKHR::eMailbox;
+
+        vk::SwapchainCreateInfoKHR sci{
+            {},
+            _surface,
+            capabilities.minImageCount + 1,
+            _format.format,
+            _format.colorSpace,
+            _extent,
+            1,
+            vk::ImageUsageFlagBits::eColorAttachment,
+            vk::SharingMode::eExclusive,
+            0, 
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            true,
+        };
+
+        _swapchain = {dev, sci};
+
+        vk::ImageViewCreateInfo ci{
+            {},
+            {},
+            vk::ImageViewType::e2D,
+            _format.format,
+            {vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity},
+            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+
+        const auto images = _swapchain.getImages();
+        for (const auto& image : images) {
+            ci.image = image;
+            _image_views.emplace_back(dev, ci);
+        }
+    }
+};
+
 class triangle {
     vk::raii::Context _context;
     vk::raii::Instance _instance{nullptr};
@@ -212,7 +276,6 @@ class triangle {
     vk::raii::SurfaceKHR _surface{nullptr};
     vk::SurfaceFormatKHR _surface_format;
     vk::Extent2D _surface_extent;
-
     vk::raii::SwapchainKHR _swapchain{nullptr};
     std::vector<vk::raii::ImageView> _image_views{};
 
