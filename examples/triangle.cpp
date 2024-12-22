@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -54,13 +55,15 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBit
 
 class glfw_window {
     GLFWwindow* _window;
+    std::function<void(std::uint32_t, std::uint32_t)> _resize_cb;
 
   public:
     glfw_window(std::uint32_t width, std::uint32_t height, const char* name) {
         glfwInit();
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         _window = glfwCreateWindow(width, height, name, nullptr, nullptr);
+        glfwSetFramebufferSizeCallback(_window, resize_callback);
+        glfwSetWindowUserPointer(_window, this);
     }
 
     vk::SurfaceKHR get_surface(const vk::raii::Instance& instance) const {
@@ -81,6 +84,16 @@ class glfw_window {
             glfwPollEvents();
             f();
         }
+    }
+
+    template <typename F>
+    void resize_handler(F&& f) {
+        _resize_cb = f;
+    }
+
+    static void resize_callback(GLFWwindow* window, int width, int height) {
+        const auto self = static_cast<glfw_window*>(glfwGetWindowUserPointer(window));
+        self->_resize_cb(width, height);
     }
 };
 
@@ -240,7 +253,7 @@ struct swapchain {
             1,
             vk::ImageUsageFlagBits::eColorAttachment,
             vk::SharingMode::eExclusive,
-            0, 
+            0,
             pre_transform,
             composite_alpha,
             present_mode,
@@ -415,6 +428,7 @@ void triangle::make_swapchain(std::uint32_t width, std::uint32_t height) {
         composite_alpha,
         present_mode,
         true,
+        _swapchain,
     };
 
     _swapchain = {_device, sci};
@@ -429,6 +443,7 @@ void triangle::make_swapchain(std::uint32_t width, std::uint32_t height) {
         {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
 
+    _image_views.clear();
     for (const auto& image : images) {
         ci.image = image;
         _image_views.emplace_back(_device, ci);
@@ -728,6 +743,7 @@ void triangle::make_pipeline() {
 }
 
 void triangle::make_framebuffers() {
+    _framebuffers.clear();
     for (const auto& iv : _image_views) {
         vk::FramebufferCreateInfo fbci{{}, _render_pass, *iv, _surface_extent.width, _surface_extent.height, 1};
         _framebuffers.emplace_back(_device, fbci);
@@ -759,7 +775,10 @@ void triangle::render() {
     }
     _device.resetFences(*_fence);
 
-    const auto [_, index] = _swapchain.acquireNextImage(-1, _image_available_semaphore);
+    auto [rv, index] = _swapchain.acquireNextImage(-1, _image_available_semaphore);
+    if (rv != vk::Result::eSuccess) {
+        fmt::print("acquireNextImage: {}\n", vk::to_string(rv));
+    }
 
     _command_buffer.reset();
     _command_buffer.begin({});
@@ -791,8 +810,10 @@ void triangle::render() {
     _graphics_queue.submit(submit, _fence);
 
     vk::PresentInfoKHR present_info{*_render_finished_semaphore, *_swapchain, index};
-    auto rv = _present_queue.presentKHR(present_info);
-    (void)rv;
+    rv = _present_queue.presentKHR(present_info);
+    if (rv != vk::Result::eSuccess) {
+        fmt::print("presentKHR: {}\n", vk::to_string(rv));
+    }
 }
 
 void triangle::wait_finished() {
@@ -834,6 +855,12 @@ int main() {
         triangle.make_pipeline();
         triangle.make_framebuffers();
         triangle.make_synchronization();
+
+        window.resize_handler([&triangle](auto w, auto h) {
+            triangle.wait_finished();
+            triangle.make_swapchain(w, h);
+            triangle.make_framebuffers();
+        });
 
         window.loop_handler([&triangle]() {
             triangle.render();
