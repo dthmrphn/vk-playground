@@ -253,7 +253,7 @@ struct swapchain {
             1,
             vk::ImageUsageFlagBits::eColorAttachment,
             vk::SharingMode::eExclusive,
-            0,
+            nullptr,
             pre_transform,
             composite_alpha,
             present_mode,
