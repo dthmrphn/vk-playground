@@ -14,7 +14,7 @@ layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragCoord;
 
 void main() {
-    gl_Position = ubo.m * ubo.v * ubo.p * vec4(aPos, 0.0, 1.0);
+    gl_Position = ubo.p * ubo.v * ubo.m * vec4(aPos, 0.0, 1.0);
     fragColor = aColor;
     fragCoord = aCoord;
 }
