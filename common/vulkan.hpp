@@ -62,6 +62,8 @@ class host_buffer : public buffer {
   public:
     host_buffer() = default;
     host_buffer(const device& dev, vk::DeviceSize size, vk::BufferUsageFlags usage);
+
+    void copy(void* data, vk::DeviceSize size) const;
 };
 
 class texture {
@@ -89,6 +91,12 @@ class swapchain {
   public:
     swapchain() = default;
     swapchain(const device& dev, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h);
+    
+    const vk::raii::SwapchainKHR& get() const;
+
+    vk::SurfaceFormatKHR format() const;
+    vk::Extent2D extent() const;
+    std::vector<vk::ImageView> image_views() const;
 };
 
 } // namespace vulkan

@@ -6,6 +6,14 @@
 
 namespace vulkan {
 
+constexpr static const char* enabled_layers[] = {
+    "VK_LAYER_KHRONOS_validation",
+};
+
+constexpr static const char* enabled_extensions[] = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
 VKAPI_ATTR VkBool32 VKAPI_CALL device::debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
                                                       VkDebugUtilsMessageTypeFlagsEXT message_types,
                                                       VkDebugUtilsMessengerCallbackDataEXT const* callback_data,
@@ -58,7 +66,7 @@ device::device(const vk::ApplicationInfo& app_info,
         queue_ci.emplace_back(vk::DeviceQueueCreateFlags(), i, 1, &priority);
     }
 
-    vk::DeviceCreateInfo device_ci{{}, queue_ci, layers, extensions};
+    vk::DeviceCreateInfo device_ci{{}, queue_ci, enabled_layers, enabled_extensions};
     _logical_dev = {_physical_dev, device_ci};
 }
 
@@ -137,6 +145,10 @@ device_buffer::device_buffer(const device& device, vk::DeviceSize size, vk::Buff
 host_buffer::host_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage)
     : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) {
     _mapped = _mem.mapMemory(0, size);
+}
+
+void host_buffer::copy(void* data, vk::DeviceSize size) const {
+    std::memcpy(_mapped, data, size);
 }
 
 texture::texture(const device& device, std::uint32_t width, std::uint32_t height) {
@@ -227,7 +239,12 @@ swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint
         {},
         vk::ImageViewType::e2D,
         _format.format,
-        {vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity},
+        {
+            vk::ComponentSwizzle::eIdentity,
+            vk::ComponentSwizzle::eIdentity,
+            vk::ComponentSwizzle::eIdentity,
+            vk::ComponentSwizzle::eIdentity,
+        },
         {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
 
@@ -236,6 +253,26 @@ swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint
         ci.image = image;
         _image_views.emplace_back(device.logical(), ci);
     }
+}
+
+const vk::raii::SwapchainKHR& swapchain::get() const {
+    return _swapchain;
+}
+
+vk::SurfaceFormatKHR swapchain::format() const {
+    return _format;
+}
+
+vk::Extent2D swapchain::extent() const {
+    return _extent;
+}
+
+std::vector<vk::ImageView> swapchain::image_views() const {
+    std::vector<vk::ImageView> views{};
+    for (const auto& iv : _image_views) {
+        views.push_back(*iv);
+    }
+    return views;
 }
 
 } // namespace vulkan
