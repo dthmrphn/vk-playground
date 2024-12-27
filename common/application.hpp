@@ -31,6 +31,9 @@ class application {
     GLFWwindow* _window;
 
     void render();
+    void update_swapchain(std::uint32_t w, std::uint32_t h);
+
+    static void resize_handler(GLFWwindow*, int, int);
 
   public:
     application(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h);
