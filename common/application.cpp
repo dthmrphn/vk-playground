@@ -141,10 +141,8 @@ void application::resize_handler(GLFWwindow* win, int w, int h) {
 
 void application::update_swapchain(std::uint32_t w, std::uint32_t h) {
     _device.logical().waitIdle();
-
-    VkSurfaceKHR surf{};
-    glfwCreateWindowSurface(*_device.instance(), _window, nullptr, &surf);
-    _swapchain = vulkan::swapchain{_device, surf, w, h};
+    
+    _swapchain.resize(_device, w, h);
 
     _framebuffers.clear();
     for (const auto& iv : _swapchain.image_views()) {

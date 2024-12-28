@@ -196,7 +196,11 @@ texture::texture(const device& device, std::uint32_t width, std::uint32_t height
 
 swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h) {
     _surface = {device.instance(), surf};
+    
+    resize(device, w, h);
+}
 
+void swapchain::resize(const device& device, std::uint32_t w, std::uint32_t h) {
     const auto formats = device.physical().getSurfaceFormatsKHR(_surface);
     _format = formats[0];
     for (const auto& f : formats) {
@@ -230,6 +234,7 @@ swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint
         composite_alpha,
         present_mode,
         true,
+        _swapchain,
     };
 
     _swapchain = {device.logical(), sci};
@@ -249,6 +254,7 @@ swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint
     };
 
     const auto images = _swapchain.getImages();
+    _image_views.clear();
     for (const auto& image : images) {
         ci.image = image;
         _image_views.emplace_back(device.logical(), ci);

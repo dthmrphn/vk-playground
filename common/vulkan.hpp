@@ -90,7 +90,8 @@ class swapchain {
 
   public:
     swapchain() = default;
-    swapchain(const device& dev, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h);
+    swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h);
+    void resize(const device& device, std::uint32_t w, std::uint32_t h);
     
     const vk::raii::SwapchainKHR& get() const;
 
