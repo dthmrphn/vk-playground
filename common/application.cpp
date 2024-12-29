@@ -93,9 +93,6 @@ application::application(const vk::ApplicationInfo& app_info, std::uint32_t w, s
     }
 
     // synchronization creation
-    //_image_available_semaphores.resize(frames_in_flight, nullptr);
-    //_render_finished_semaphores.resize(frames_in_flight, nullptr);
-    //_fences.resize(frames_in_flight, nullptr);
     vk::SemaphoreCreateInfo sci{};
     vk::FenceCreateInfo fci{vk::FenceCreateFlagBits::eSignaled};
     for (std::size_t i = 0; i < frames_in_flight; ++i) {
@@ -115,11 +112,11 @@ void application::render() {
         fmt::print("acquire err: {}\n", vk::to_string(rv));
     }
 
-    _command_buffers[_current_frame].reset();
-    _command_buffers[_current_frame].begin({});
-
     vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _swapchain.extent()}, clear_value};
+
+    _command_buffers[_current_frame].reset();
+    _command_buffers[_current_frame].begin({});
     _command_buffers[_current_frame].beginRenderPass(rpbi, vk::SubpassContents::eInline);
     vk::Viewport viewport{0.0f, 0.0f, (float)_swapchain.extent().width, (float)_swapchain.extent().height, 0.0f, 1.0f};
     _command_buffers[_current_frame].setViewport(0, viewport);
