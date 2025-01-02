@@ -105,16 +105,23 @@ application::application(const vk::ApplicationInfo& app_info, std::uint32_t w, s
     }
 }
 
-void application::render() {
-    const auto& [cb, image_available_semaphore, render_finished_semaphore, fence] = _frames[_current_frame];
+std::uint32_t application::acquire() {
+    const auto& fence = _frames[_current_frame].fence;
+    const auto& semaphore = _frames[_current_frame].image_available_semaphore;
     while (vk::Result::eTimeout == _device.logical().waitForFences(*fence, vk::True, -1)) {
     }
     _device.logical().resetFences(*fence);
 
-    auto [rv, index] = _swapchain.get().acquireNextImage(-1, image_available_semaphore);
+    auto [rv, index] = _swapchain.get().acquireNextImage(-1, semaphore);
     if (rv != vk::Result::eSuccess) {
         fmt::print("acquire err: {}\n", vk::to_string(rv));
     }
+
+    return index;
+}
+
+void application::record(std::uint32_t index) {
+    const auto& cb = _frames[_current_frame].command_buffer;
 
     vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _swapchain.extent()}, clear_value};
@@ -127,7 +134,10 @@ void application::render() {
     cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
     cb.endRenderPass();
     cb.end();
+}
 
+void application::present(std::uint32_t index) {
+    const auto& [cb, image_available_semaphore, render_finished_semaphore, fence] = _frames[_current_frame];
     vk::PipelineStageFlags wait_flags{vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::SubmitInfo submit{
         *image_available_semaphore,
@@ -138,10 +148,16 @@ void application::render() {
     _graphic_queue.submit(submit, fence);
 
     vk::PresentInfoKHR present_info{*render_finished_semaphore, *_swapchain.get(), index};
-    rv = _present_queue.presentKHR(present_info);
+    auto rv = _present_queue.presentKHR(present_info);
     if (rv != vk::Result::eSuccess) {
         fmt::print("present err: {}\n", vk::to_string(rv));
     }
+}
+
+void application::render() {
+    const auto i = acquire();
+    record(i);
+    present(i);
 
     _current_frame = (_current_frame + 1) % frames_in_flight;
 }

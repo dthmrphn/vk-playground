@@ -37,6 +37,10 @@ class application {
     std::array<frame_data, frames_in_flight> _frames;
 
     GLFWwindow* _window;
+    
+    std::uint32_t acquire();
+    void record(std::uint32_t i);
+    void present(std::uint32_t i);
 
     void render();
     void update_swapchain(std::uint32_t w, std::uint32_t h);
