@@ -93,6 +93,18 @@ std::uint32_t device::memory_type_index(std::uint32_t filter, vk::MemoryProperty
     throw std::runtime_error("failed to find memory type");
 }
 
+const vk::PhysicalDevice& device::physical() const {
+    return *_physical_dev;
+}
+
+const vk::Instance& device::instance() const {
+    return *_instance;
+}
+
+const vk::Device& device::logical() const {
+    return *_logical_dev;
+}
+
 vk::raii::Queue device::make_graphic_queue() const {
     const auto i = queue_family_index(vk::QueueFlagBits::eGraphics);
     return _logical_dev.getQueue(i, 0);
@@ -104,30 +116,95 @@ vk::raii::Queue device::make_compute_queue() const {
 }
 
 vk::raii::Queue device::make_present_queue() const {
-    return {nullptr};
+    const auto i = queue_family_index(vk::QueueFlagBits::eGraphics);
+    return _logical_dev.getQueue(i, 0);
 }
 
-const vk::raii::PhysicalDevice& device::physical() const {
-    return _physical_dev;
+vk::raii::Buffer device::make_buffer(const vk::BufferCreateInfo info) const {
+    return _logical_dev.createBuffer(info);
 }
 
-const vk::raii::Instance& device::instance() const {
-    return _instance;
+vk::raii::DeviceMemory device::make_memory(const vk::MemoryAllocateInfo& info) const {
+    return _logical_dev.allocateMemory(info);
 }
 
-const vk::raii::Device& device::logical() const {
-    return _logical_dev;
+vk::raii::Image device::make_image(const vk::ImageCreateInfo& info) const {
+    return _logical_dev.createImage(info);
+}
+
+vk::raii::ImageView device::make_image_view(const vk::ImageViewCreateInfo& info) const {
+    return _logical_dev.createImageView(info);
+}
+
+vk::raii::Sampler device::make_sampler(const vk::SamplerCreateInfo& info) const {
+    return _logical_dev.createSampler(info);
+}
+
+vk::raii::SurfaceKHR device::make_surface(const vk::SurfaceKHR& surf) const {
+    return {_instance, surf};
+}
+
+vk::raii::SwapchainKHR device::make_swapchain(const vk::SwapchainCreateInfoKHR& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::CommandPool device::make_command_pool(const vk::CommandPoolCreateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::CommandBuffers device::make_command_buffers(const vk::CommandBufferAllocateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::RenderPass device::make_render_pass(const vk::RenderPassCreateInfo& info) const {
+    return _logical_dev.createRenderPass(info);
+}
+
+vk::raii::Framebuffer device::make_framebuffer(const vk::FramebufferCreateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::Fence device::make_fence(const vk::FenceCreateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::Semaphore device::make_semaphore(const vk::SemaphoreCreateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::DescriptorSetLayout device::make_descriptor_set_layout(const vk::DescriptorSetLayoutCreateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::DescriptorPool device::make_descriptor_pool(const vk::DescriptorPoolCreateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::DescriptorSets device::make_descriptor_sets(const vk::DescriptorSetAllocateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::ShaderModule device::make_shader_module(const vk::ShaderModuleCreateInfo& info) const {
+    return {_logical_dev, info};
+}
+
+vk::raii::Pipeline device::make_pipeline(const vk::GraphicsPipelineCreateInfo& info) const {
+    return {_logical_dev, nullptr, info};
+}
+
+vk::raii::PipelineLayout device::make_pipeline_layout(const vk::PipelineLayoutCreateInfo& info) const {
+    return {_logical_dev, info};
 }
 
 buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) {
     vk::BufferCreateInfo ci{{}, size, usage, vk::SharingMode::eExclusive};
-    _buf = {device.logical(), ci};
+    _buf = device.make_buffer(ci);
 
     const auto req = _buf.getMemoryRequirements();
     const auto index = device.memory_type_index(req.memoryTypeBits, mask);
 
     vk::MemoryAllocateInfo ai{req.size, index};
-    _mem = {device.logical(), ai};
+    _mem = device.make_memory(ai);
     _buf.bindMemory(_mem, 0);
 }
 
@@ -165,13 +242,13 @@ texture::texture(const device& device, std::uint32_t width, std::uint32_t height
         vk::SharingMode::eExclusive,
     };
 
-    _img = {device.logical(), ici};
+    _img = device.make_image(ici);
 
     const auto req = _img.getMemoryRequirements();
     const auto index = device.memory_type_index(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     vk::MemoryAllocateInfo mai{req.size, index};
-    _mem = {device.logical(), mai};
+    _mem = device.make_memory(mai);
     _img.bindMemory(_mem, 0);
 
     vk::ImageViewCreateInfo ivci{
@@ -182,7 +259,7 @@ texture::texture(const device& device, std::uint32_t width, std::uint32_t height
         {},
         {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    _view = {device.logical(), ivci};
+    _view = device.make_image_view(ivci);
 
     vk::SamplerCreateInfo sic{
         {},
@@ -191,12 +268,12 @@ texture::texture(const device& device, std::uint32_t width, std::uint32_t height
         {},
     };
 
-    _sampler = {device.logical(), sic};
+    _sampler = device.make_sampler(sic);
 }
 
 swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h) {
-    _surface = {device.instance(), surf};
-    
+    _surface = device.make_surface(surf);
+
     resize(device, w, h);
 }
 
@@ -237,7 +314,7 @@ void swapchain::resize(const device& device, std::uint32_t w, std::uint32_t h) {
         _swapchain,
     };
 
-    _swapchain = {device.logical(), sci};
+    _swapchain = device.make_swapchain(sci);
 
     vk::ImageViewCreateInfo ci{
         {},
@@ -257,7 +334,7 @@ void swapchain::resize(const device& device, std::uint32_t w, std::uint32_t h) {
     _image_views.clear();
     for (const auto& image : images) {
         ci.image = image;
-        _image_views.emplace_back(device.logical(), ci);
+        _image_views.emplace_back(device.make_image_view(ci));
     }
 }
 

@@ -28,13 +28,39 @@ class device {
     std::uint32_t queue_family_index(vk::QueueFlags flags) const;
     std::uint32_t memory_type_index(std::uint32_t filter, vk::MemoryPropertyFlags mask) const;
 
-    const vk::raii::PhysicalDevice& physical() const;
-    const vk::raii::Instance& instance() const;
-    const vk::raii::Device& logical() const;
+    const vk::PhysicalDevice& physical() const;
+    const vk::Instance& instance() const;
+    const vk::Device& logical() const;
 
     vk::raii::Queue make_graphic_queue() const;
     vk::raii::Queue make_present_queue() const;
     vk::raii::Queue make_compute_queue() const;
+
+    vk::raii::Buffer make_buffer(const vk::BufferCreateInfo info) const;
+    vk::raii::DeviceMemory make_memory(const vk::MemoryAllocateInfo& info) const;
+    vk::raii::Image make_image(const vk::ImageCreateInfo& info) const;
+    vk::raii::ImageView make_image_view(const vk::ImageViewCreateInfo& info) const;
+    vk::raii::Sampler make_sampler(const vk::SamplerCreateInfo& info) const;
+    
+    vk::raii::SurfaceKHR make_surface(const vk::SurfaceKHR& surf) const;
+    vk::raii::SwapchainKHR make_swapchain(const vk::SwapchainCreateInfoKHR& info) const;
+    
+    vk::raii::CommandPool make_command_pool(const vk::CommandPoolCreateInfo& info) const;
+    vk::raii::CommandBuffers make_command_buffers(const vk::CommandBufferAllocateInfo& info) const;
+
+    vk::raii::RenderPass make_render_pass(const vk::RenderPassCreateInfo& info) const;
+    vk::raii::Framebuffer make_framebuffer(const vk::FramebufferCreateInfo& info) const;
+
+    vk::raii::Fence make_fence(const vk::FenceCreateInfo& info) const;
+    vk::raii::Semaphore make_semaphore(const vk::SemaphoreCreateInfo& info) const;
+
+    vk::raii::DescriptorSetLayout make_descriptor_set_layout(const vk::DescriptorSetLayoutCreateInfo& info) const;
+    vk::raii::DescriptorPool make_descriptor_pool(const vk::DescriptorPoolCreateInfo& info) const;
+    vk::raii::DescriptorSets make_descriptor_sets(const vk::DescriptorSetAllocateInfo& info) const;
+    
+    vk::raii::ShaderModule make_shader_module(const vk::ShaderModuleCreateInfo& info) const;
+    vk::raii::Pipeline make_pipeline(const vk::GraphicsPipelineCreateInfo& info) const;
+    vk::raii::PipelineLayout make_pipeline_layout(const vk::PipelineLayoutCreateInfo& info) const;
 };
 
 class buffer {
@@ -92,7 +118,7 @@ class swapchain {
     swapchain() = default;
     swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h);
     void resize(const device& device, std::uint32_t w, std::uint32_t h);
-    
+
     const vk::raii::SwapchainKHR& get() const;
 
     vk::SurfaceFormatKHR format() const;

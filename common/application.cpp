@@ -12,12 +12,12 @@ constexpr static const char* enabled_extensions[] = {
 };
 
 namespace common {
-application::application(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h) {
+application_base::application_base(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h) {
     // glfw initialization
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     _window = glfwCreateWindow(w, h, app_info.pApplicationName, nullptr, nullptr);
-    glfwSetFramebufferSizeCallback(_window, &application::resize_handler);
+    glfwSetFramebufferSizeCallback(_window, &application_base::resize_handler);
     glfwSetWindowUserPointer(_window, this);
 
     // device creation
@@ -31,22 +31,22 @@ application::application(const vk::ApplicationInfo& app_info, std::uint32_t w, s
 
     // queue creation
     _graphic_queue_index = _device.queue_family_index(vk::QueueFlagBits::eGraphics);
-    _graphic_queue = {_device.logical(), _graphic_queue_index, 0};
+    _graphic_queue = _device.make_graphic_queue();
     _present_queue_index = _device.queue_family_index(vk::QueueFlagBits::eGraphics);
-    _present_queue = {_device.logical(), _graphic_queue_index, 0};
+    _present_queue = _device.make_graphic_queue();
 
     // swapchain creation
     VkSurfaceKHR surf{};
-    glfwCreateWindowSurface(*_device.instance(), _window, nullptr, &surf);
+    glfwCreateWindowSurface(_device.instance(), _window, nullptr, &surf);
     _swapchain = vulkan::swapchain{_device, surf, w, h};
 
     // command pool and buffer creation
     vk::CommandPoolCreateFlags flags{vk::CommandPoolCreateFlagBits::eResetCommandBuffer};
     vk::CommandPoolCreateInfo ci{flags, _graphic_queue_index};
-    _command_pool = {_device.logical(), ci};
+    _command_pool = _device.make_command_pool(ci);
 
     vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, frames_in_flight};
-    auto buffers = vk::raii::CommandBuffers{_device.logical(), ai};
+    auto buffers = _device.make_command_buffers(ai);
     for (std::size_t i = 0; i < frames_in_flight; ++i) {
         _frames[i].command_buffer = std::move(buffers[i]);
     }
@@ -80,7 +80,7 @@ application::application(const vk::ApplicationInfo& app_info, std::uint32_t w, s
         subpass_dep,
     };
 
-    _render_pass = {_device.logical(), rpci};
+    _render_pass = _device.make_render_pass(rpci);
 
     // framebuffer creation
     for (const auto& iv : _swapchain.image_views()) {
@@ -92,20 +92,20 @@ application::application(const vk::ApplicationInfo& app_info, std::uint32_t w, s
             _swapchain.extent().height,
             1,
         };
-        _framebuffers.emplace_back(_device.logical(), fbci);
+        _framebuffers.emplace_back(_device.make_framebuffer(fbci));
     }
 
     // synchronization creation
     vk::SemaphoreCreateInfo sci{};
     vk::FenceCreateInfo fci{vk::FenceCreateFlagBits::eSignaled};
     for (std::size_t i = 0; i < frames_in_flight; ++i) {
-        _frames[i].image_available_semaphore = {_device.logical(), sci};
-        _frames[i].render_finished_semaphore = {_device.logical(), sci};
-        _frames[i].fence = {_device.logical(), fci};
+        _frames[i].image_available_semaphore = _device.make_semaphore(sci);
+        _frames[i].render_finished_semaphore = _device.make_semaphore(sci);
+        _frames[i].fence = _device.make_fence(fci);
     }
 }
 
-std::uint32_t application::acquire() {
+std::uint32_t application_base::acquire() {
     const auto& fence = _frames[_current_frame].fence;
     const auto& semaphore = _frames[_current_frame].image_available_semaphore;
     while (vk::Result::eTimeout == _device.logical().waitForFences(*fence, vk::True, -1)) {
@@ -120,23 +120,23 @@ std::uint32_t application::acquire() {
     return index;
 }
 
-void application::record(std::uint32_t index) {
-    const auto& cb = _frames[_current_frame].command_buffer;
+// void application_base::record(std::uint32_t index) {
+//     const auto& cb = _frames[_current_frame].command_buffer;
+//
+//     vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
+//     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _swapchain.extent()}, clear_value};
+//     vk::Viewport viewport{0.0f, 0.0f, (float)_swapchain.extent().width, (float)_swapchain.extent().height, 0.0f, 1.0f};
+//
+//     cb.reset();
+//     cb.begin({});
+//     cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
+//     cb.setViewport(0, viewport);
+//     cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
+//     cb.endRenderPass();
+//     cb.end();
+// }
 
-    vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
-    vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _swapchain.extent()}, clear_value};
-    vk::Viewport viewport{0.0f, 0.0f, (float)_swapchain.extent().width, (float)_swapchain.extent().height, 0.0f, 1.0f};
-
-    cb.reset();
-    cb.begin({});
-    cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
-    cb.setViewport(0, viewport);
-    cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
-    cb.endRenderPass();
-    cb.end();
-}
-
-void application::present(std::uint32_t index) {
+void application_base::present(std::uint32_t index) {
     const auto& [cb, image_available_semaphore, render_finished_semaphore, fence] = _frames[_current_frame];
     vk::PipelineStageFlags wait_flags{vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::SubmitInfo submit{
@@ -152,22 +152,22 @@ void application::present(std::uint32_t index) {
     if (rv != vk::Result::eSuccess) {
         fmt::print("present err: {}\n", vk::to_string(rv));
     }
-}
-
-void application::render() {
-    const auto i = acquire();
-    record(i);
-    present(i);
 
     _current_frame = (_current_frame + 1) % frames_in_flight;
 }
 
-void application::resize_handler(GLFWwindow* win, int w, int h) {
-    auto app = static_cast<application*>(glfwGetWindowUserPointer(win));
+void application_base::render() {
+    const auto i = acquire();
+    // record(i);
+    present(i);
+}
+
+void application_base::resize_handler(GLFWwindow* win, int w, int h) {
+    auto app = static_cast<application_base*>(glfwGetWindowUserPointer(win));
     app->update_swapchain(w, h);
 }
 
-void application::update_swapchain(std::uint32_t w, std::uint32_t h) {
+void application_base::update_swapchain(std::uint32_t w, std::uint32_t h) {
     _device.logical().waitIdle();
 
     _swapchain.resize(_device, w, h);
@@ -182,17 +182,14 @@ void application::update_swapchain(std::uint32_t w, std::uint32_t h) {
             _swapchain.extent().height,
             1,
         };
-        _framebuffers.emplace_back(_device.logical(), fbci);
+        _framebuffers.emplace_back(_device.make_framebuffer(fbci));
     }
 }
 
-void application::run() {
-    while (!glfwWindowShouldClose(_window)) {
-        glfwPollEvents();
-        render();
-    }
-
-    _device.logical().waitIdle();
+bool application_base::loop_handler() const {
+    auto rv = !glfwWindowShouldClose(_window);
+    glfwPollEvents();
+    return rv;
 }
 
 } // namespace common

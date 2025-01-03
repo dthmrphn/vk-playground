@@ -7,7 +7,8 @@
 
 namespace common {
 
-class application {
+class application_base {
+  protected:
     static constexpr auto frames_in_flight{2};
 
     std::size_t _current_frame{};
@@ -37,9 +38,9 @@ class application {
     std::array<frame_data, frames_in_flight> _frames;
 
     GLFWwindow* _window;
-    
+
     std::uint32_t acquire();
-    void record(std::uint32_t i);
+    // void record(std::uint32_t i);
     void present(std::uint32_t i);
 
     void render();
@@ -47,10 +48,34 @@ class application {
 
     static void resize_handler(GLFWwindow*, int, int);
 
-  public:
-    application(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h);
+    bool loop_handler() const;
 
-    void run();
+  public:
+    application_base(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h);
+};
+
+template <typename T>
+class application : public application_base {
+    application() = default;
+    friend T;
+
+    T& impl() {
+        return static_cast<T&>(*this);
+    }
+
+  public:
+    application(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h)
+        : application_base(app_info, w, h) {}
+
+    void run() {
+        while (loop_handler()) {
+            const auto i = acquire();
+            impl().record(i);
+            present(i);
+        }
+
+        _device.logical().waitIdle();
+    }
 };
 
 } // namespace common
