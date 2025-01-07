@@ -62,7 +62,7 @@ class device {
     vk::raii::Pipeline make_pipeline(const vk::GraphicsPipelineCreateInfo& info) const;
     vk::raii::PipelineLayout make_pipeline_layout(const vk::PipelineLayoutCreateInfo& info) const;
 
-    void copy_buffers(const vk::Queue& q, std::uint32_t qi, const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const;
+    void copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const;
 };
 
 class buffer {

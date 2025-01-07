@@ -196,10 +196,12 @@ vk::raii::PipelineLayout device::make_pipeline_layout(const vk::PipelineLayoutCr
     return {_logical_dev, info};
 }
 
-void device::copy_buffers(const vk::Queue& q, std::uint32_t qi, const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const {
+void device::copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const {
+    const auto i = queue_family_index(vk::QueueFlagBits::eTransfer);
+    const auto q = _logical_dev.getQueue(i, 0);
     const auto pool = make_command_pool({
         vk::CommandPoolCreateFlagBits::eTransient,
-        qi,
+        i,
     });
 
     const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());

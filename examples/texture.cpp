@@ -192,7 +192,7 @@ void texture::make_vertex_buffer() {
         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
     };
 
-    _device.copy_buffers(_graphic_queue, _graphic_queue_index, staging.buf(), _verticies_buffer.buf(), size);
+    _device.copy_buffers(staging.buf(), _verticies_buffer.buf(), size);
 }
 
 void texture::make_indices_buffer() {
@@ -208,7 +208,7 @@ void texture::make_indices_buffer() {
         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
     };
 
-    _device.copy_buffers(_graphic_queue, _graphic_queue_index, staging.buf(), _indices_buffer.buf(), size);
+    _device.copy_buffers(staging.buf(), _indices_buffer.buf(), size);
 }
 
 void texture::make_texture_image() {
