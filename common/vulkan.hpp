@@ -41,10 +41,10 @@ class device {
     vk::raii::Image make_image(const vk::ImageCreateInfo& info) const;
     vk::raii::ImageView make_image_view(const vk::ImageViewCreateInfo& info) const;
     vk::raii::Sampler make_sampler(const vk::SamplerCreateInfo& info) const;
-    
+
     vk::raii::SurfaceKHR make_surface(const vk::SurfaceKHR& surf) const;
     vk::raii::SwapchainKHR make_swapchain(const vk::SwapchainCreateInfoKHR& info) const;
-    
+
     vk::raii::CommandPool make_command_pool(const vk::CommandPoolCreateInfo& info) const;
     vk::raii::CommandBuffers make_command_buffers(const vk::CommandBufferAllocateInfo& info) const;
 
@@ -57,12 +57,13 @@ class device {
     vk::raii::DescriptorSetLayout make_descriptor_set_layout(const vk::DescriptorSetLayoutCreateInfo& info) const;
     vk::raii::DescriptorPool make_descriptor_pool(const vk::DescriptorPoolCreateInfo& info) const;
     vk::raii::DescriptorSets make_descriptor_sets(const vk::DescriptorSetAllocateInfo& info) const;
-    
+
     vk::raii::ShaderModule make_shader_module(const vk::ShaderModuleCreateInfo& info) const;
     vk::raii::Pipeline make_pipeline(const vk::GraphicsPipelineCreateInfo& info) const;
     vk::raii::PipelineLayout make_pipeline_layout(const vk::PipelineLayoutCreateInfo& info) const;
 
     void copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const;
+    void copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const;
 };
 
 class buffer {
@@ -99,6 +100,7 @@ class texture {
     vk::raii::ImageView _view{nullptr};
     vk::raii::DeviceMemory _mem{nullptr};
     vk::raii::Sampler _sampler{nullptr};
+    vk::Extent3D _extent{};
 
   public:
     texture() = default;
@@ -111,6 +113,7 @@ class texture {
     const vk::Image& image() const;
     const vk::ImageView& view() const;
     const vk::Sampler& sampler() const;
+    const vk::Extent3D extent() const;
 };
 
 class swapchain {

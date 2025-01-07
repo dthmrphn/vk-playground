@@ -213,6 +213,66 @@ void device::copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::Devi
     q.waitIdle();
 }
 
+void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const {
+    const auto i = queue_family_index(vk::QueueFlagBits::eTransfer);
+    const auto q = _logical_dev.getQueue(i, 0);
+    const auto pool = make_command_pool({
+        vk::CommandPoolCreateFlagBits::eTransient,
+        i,
+    });
+
+    const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
+    cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
+                       vk::PipelineStageFlagBits::eTransfer,
+                       {},
+                       nullptr,
+                       nullptr,
+                       vk::ImageMemoryBarrier{
+                           {},
+                           vk::AccessFlagBits::eTransferWrite,
+                           vk::ImageLayout::eUndefined,
+                           vk::ImageLayout::eTransferDstOptimal,
+                           {},
+                           {},
+                           img,
+                           {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+                       });
+
+    cb.copyBufferToImage(buf,
+                         img,
+                         vk::ImageLayout::eTransferDstOptimal,
+                         vk::BufferImageCopy{
+                             0,
+                             0,
+                             0,
+                             {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+                             {0, 0, 0},
+                             extent,
+                         });
+
+    cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                       vk::PipelineStageFlagBits::eFragmentShader,
+                       {},
+                       nullptr,
+                       nullptr,
+                       vk::ImageMemoryBarrier{
+                           vk::AccessFlagBits::eTransferWrite,
+                           vk::AccessFlagBits::eShaderRead,
+                           vk::ImageLayout::eTransferDstOptimal,
+                           vk::ImageLayout::eShaderReadOnlyOptimal,
+                           {},
+                           {},
+                           img,
+                           {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+                       });
+
+    cb.end();
+
+    q.submit(vk::SubmitInfo{{}, {}, *cb});
+    q.waitIdle();
+}
+
 buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) {
     vk::BufferCreateInfo ci{{}, size, usage, vk::SharingMode::eExclusive};
     _buf = device.make_buffer(ci);
@@ -245,7 +305,8 @@ void host_buffer::copy(void* data, vk::DeviceSize size) const {
     std::memcpy(_mapped, data, size);
 }
 
-texture::texture(const device& device, std::uint32_t width, std::uint32_t height) {
+texture::texture(const device& device, std::uint32_t width, std::uint32_t height)
+    : _extent(width, height, 1) {
     vk::ImageCreateInfo ici{
         {},
         vk::ImageType::e2D,
@@ -297,6 +358,10 @@ const vk::ImageView& texture::view() const {
 
 const vk::Sampler& texture::sampler() const {
     return *_sampler;
+}
+
+const vk::Extent3D texture::extent() const {
+    return _extent;
 }
 
 swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h) {

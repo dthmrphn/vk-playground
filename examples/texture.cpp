@@ -231,62 +231,7 @@ void texture::make_texture_image() {
 
     _texture = {_device, width, height};
 
-    vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
-    vk::raii::CommandBuffer cb{std::move(_device.make_command_buffers(ai).front())};
-
-    cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-
-    {
-        vk::ImageMemoryBarrier barrier{
-            {},
-            vk::AccessFlagBits::eTransferWrite,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eTransferDstOptimal,
-            {},
-            {},
-            _texture.image(),
-            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-        };
-
-        vk::PipelineStageFlags src_stage{vk::PipelineStageFlagBits::eTopOfPipe};
-        vk::PipelineStageFlags dst_stage{vk::PipelineStageFlagBits::eTransfer};
-
-        cb.pipelineBarrier(src_stage, dst_stage, {}, nullptr, nullptr, barrier);
-    }
-
-    vk::BufferImageCopy bic{
-        0,
-        0,
-        0,
-        {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-        {0, 0, 0},
-        {width, height, 1},
-    };
-    cb.copyBufferToImage(staging.buf(), _texture.image(), vk::ImageLayout::eTransferDstOptimal, bic);
-
-    {
-        vk::ImageMemoryBarrier barrier{
-            vk::AccessFlagBits::eTransferWrite,
-            vk::AccessFlagBits::eShaderRead,
-            vk::ImageLayout::eTransferDstOptimal,
-            vk::ImageLayout::eShaderReadOnlyOptimal,
-            {},
-            {},
-            _texture.image(),
-            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-        };
-
-        vk::PipelineStageFlags src_stage{vk::PipelineStageFlagBits::eTransfer};
-        vk::PipelineStageFlags dst_stage{vk::PipelineStageFlagBits::eFragmentShader};
-
-        cb.pipelineBarrier(src_stage, dst_stage, {}, nullptr, nullptr, barrier);
-    }
-
-    cb.end();
-
-    vk::SubmitInfo si{{}, {}, *cb};
-    _graphic_queue.submit(si);
-    _graphic_queue.waitIdle();
+    _device.copy_buffer_to_image(staging.buf(), _texture.image(), _texture.extent());
 }
 
 void texture::record(std::uint32_t i) {
