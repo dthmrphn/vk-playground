@@ -107,6 +107,10 @@ class texture {
     static constexpr vk::DescriptorSetLayoutBinding layout_binding(std::uint32_t binding) {
         return {binding, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment};
     }
+
+    const vk::Image& image() const;
+    const vk::ImageView& view() const;
+    const vk::Sampler& sampler() const;
 };
 
 class swapchain {

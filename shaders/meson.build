@@ -5,3 +5,4 @@ spirv_gen = generator(spirv_comp,
                 arguments : ['@INPUT@', '-V', '-x', '-o', '@OUTPUT@'])
 
 triangle_shaders = spirv_gen.process('triangle.vert', 'triangle.frag')
+texture_shaders = spirv_gen.process('texture.vert', 'texture.frag')

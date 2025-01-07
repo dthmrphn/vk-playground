@@ -206,7 +206,7 @@ void device::copy_buffers(const vk::Queue& q, std::uint32_t qi, const vk::Buffer
     cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
     cb.copyBuffer(src, dst, {{0, 0, size}});
     cb.end();
-    
+
     q.submit(vk::SubmitInfo{{}, {}, *cb});
     q.waitIdle();
 }
@@ -284,6 +284,17 @@ texture::texture(const device& device, std::uint32_t width, std::uint32_t height
     };
 
     _sampler = device.make_sampler(sic);
+}
+
+const vk::Image& texture::image() const {
+    return *_img;
+}
+const vk::ImageView& texture::view() const {
+    return *_view;
+}
+
+const vk::Sampler& texture::sampler() const {
+    return *_sampler;
 }
 
 swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h) {
