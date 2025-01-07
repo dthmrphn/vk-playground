@@ -196,6 +196,21 @@ vk::raii::PipelineLayout device::make_pipeline_layout(const vk::PipelineLayoutCr
     return {_logical_dev, info};
 }
 
+void device::copy_buffers(const vk::Queue& q, std::uint32_t qi, const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const {
+    const auto pool = make_command_pool({
+        vk::CommandPoolCreateFlagBits::eTransient,
+        qi,
+    });
+
+    const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
+    cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    cb.copyBuffer(src, dst, {{0, 0, size}});
+    cb.end();
+    
+    q.submit(vk::SubmitInfo{{}, {}, *cb});
+    q.waitIdle();
+}
+
 buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) {
     vk::BufferCreateInfo ci{{}, size, usage, vk::SharingMode::eExclusive};
     _buf = device.make_buffer(ci);

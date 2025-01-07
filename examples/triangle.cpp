@@ -47,8 +47,6 @@ struct triangle : public common::application<triangle> {
     vulkan::device_buffer _indices_buffer;
     vulkan::host_buffer _uniform_buffer;
 
-    vulkan::texture _texture;
-
     vk::raii::DescriptorSetLayout _descriptor_layout{nullptr};
     vk::raii::DescriptorPool _descriptor_pool{nullptr};
     vk::raii::DescriptorSet _descriptor_set{nullptr};
@@ -181,26 +179,14 @@ void triangle::make_vertex_buffer() {
         vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
     };
 
-    vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
-    const auto buffer = std::move(_device.make_command_buffers(ai).front());
-
-    buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    vk::BufferCopy bc{0, 0, size};
-    buffer.copyBuffer(staging.buf(), _verticies_buffer.buf(), bc);
-    buffer.end();
-
-    vk::SubmitInfo si{{}, {}, *buffer};
-    _graphic_queue.submit(si);
-    _graphic_queue.waitIdle();
+    _device.copy_buffers(_graphic_queue, _graphic_queue_index, staging.buf(), _verticies_buffer.buf(), size);
 }
 
 void triangle::make_indices_buffer() {
     std::array<std::uint32_t, 3> indicies = {0, 1, 2};
 
     constexpr auto size = sizeof(std::uint32_t) * indicies.size();
-    vulkan::host_buffer staging{_device,
-                                size,
-                                vk::BufferUsageFlagBits::eTransferSrc};
+    vulkan::host_buffer staging{_device, size, vk::BufferUsageFlagBits::eTransferSrc};
     staging.copy(indicies.data(), size);
 
     _indices_buffer = {
@@ -209,17 +195,7 @@ void triangle::make_indices_buffer() {
         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
     };
 
-    vk::CommandBufferAllocateInfo ai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
-    const auto buffer = std::move(_device.make_command_buffers(ai).front());
-
-    buffer.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    vk::BufferCopy bc{0, 0, size};
-    buffer.copyBuffer(staging.buf(), _indices_buffer.buf(), bc);
-    buffer.end();
-
-    vk::SubmitInfo si{{}, {}, *buffer};
-    _graphic_queue.submit(si);
-    _graphic_queue.waitIdle();
+    _device.copy_buffers(_graphic_queue, _graphic_queue_index, staging.buf(), _indices_buffer.buf(), size);
 }
 
 void triangle::record(std::uint32_t i) {
