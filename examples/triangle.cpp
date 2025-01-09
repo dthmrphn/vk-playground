@@ -6,12 +6,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-constexpr std::uint32_t vert_shader_code[] = {
-#include <triangle.vert.spv.hpp>
-};
-constexpr std::uint32_t frag_shader_code[] = {
-#include <triangle.frag.spv.hpp>
-};
+#include <triangle.vert.hpp>
+#include <triangle.frag.hpp>
 
 struct vertex {
     glm::vec2 pos;
@@ -84,8 +80,8 @@ struct triangle : public common::application<triangle> {
         };
         _device.logical().updateDescriptorSets(wdss, nullptr);
 
-        const auto vert_shader = _device.make_shader_module({{}, sizeof(vert_shader_code), vert_shader_code});
-        const auto frag_shader = _device.make_shader_module({{}, sizeof(frag_shader_code), frag_shader_code});
+        const auto vert_shader = _device.make_shader_module({{}, triangle_vert::size, triangle_vert::code});
+        const auto frag_shader = _device.make_shader_module({{}, triangle_frag::size, triangle_frag::code});
 
         vk::PipelineShaderStageCreateInfo shader_stages[] = {
             vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eVertex, vert_shader, "main"},

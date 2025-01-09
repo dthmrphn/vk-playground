@@ -9,12 +9,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-constexpr std::uint32_t vert_shader_code[] = {
-#include <texture.vert.spv.hpp>
-};
-constexpr std::uint32_t frag_shader_code[] = {
-#include <texture.frag.spv.hpp>
-};
+#include <texture.vert.hpp>
+#include <texture.frag.hpp>
 
 struct vertex {
     glm::vec2 pos;
@@ -95,8 +91,8 @@ struct texture : public common::application<texture> {
         };
         _device.logical().updateDescriptorSets(wdss, nullptr);
 
-        const auto vert_shader = _device.make_shader_module({{}, sizeof(vert_shader_code), vert_shader_code});
-        const auto frag_shader = _device.make_shader_module({{}, sizeof(frag_shader_code), frag_shader_code});
+        const auto vert_shader = _device.make_shader_module({{}, texture_vert::size, texture_vert::code});
+        const auto frag_shader = _device.make_shader_module({{}, texture_frag::size, texture_frag::code});
 
         vk::PipelineShaderStageCreateInfo shader_stages[] = {
             vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eVertex, vert_shader, "main"},
