@@ -206,11 +206,15 @@ void device::copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::Devi
 
     const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
     cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    cb.copyBuffer(src, dst, {{0, 0, size}});
+    copy_buffers(cb, src, dst, size);
     cb.end();
 
     q.submit(vk::SubmitInfo{{}, {}, *cb});
     q.waitIdle();
+}
+
+void device::copy_buffers(const vk::CommandBuffer& cb, const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const {
+    cb.copyBuffer(src, dst, {{0, 0, size}});
 }
 
 void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const {
@@ -222,7 +226,16 @@ void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, v
     });
 
     const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
+
     cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    copy_buffer_to_image(cb, buf, img, extent);
+    cb.end();
+
+    q.submit(vk::SubmitInfo{{}, {}, *cb});
+    q.waitIdle();
+}
+
+void device::copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const {
     cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
                        vk::PipelineStageFlagBits::eTransfer,
                        {},
@@ -266,11 +279,6 @@ void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, v
                            img,
                            {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
                        });
-
-    cb.end();
-
-    q.submit(vk::SubmitInfo{{}, {}, *cb});
-    q.waitIdle();
 }
 
 buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) {

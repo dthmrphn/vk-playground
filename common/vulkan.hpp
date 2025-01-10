@@ -63,7 +63,10 @@ class device {
     vk::raii::PipelineLayout make_pipeline_layout(const vk::PipelineLayoutCreateInfo& info) const;
 
     void copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const;
+    void copy_buffers(const vk::CommandBuffer& cb, const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const;
+
     void copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const;
+    void copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const;
 };
 
 class buffer {
