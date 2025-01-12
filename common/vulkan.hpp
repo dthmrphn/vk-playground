@@ -13,6 +13,10 @@ class device {
     vk::raii::PhysicalDevice _physical_dev{nullptr};
     vk::raii::Device _logical_dev{nullptr};
 
+    vk::raii::Queue _graphic_queue{nullptr};
+    vk::raii::Queue _present_queue{nullptr};
+    vk::raii::Queue _compute_queue{nullptr};
+
   public:
     device() = default;
     device(const vk::ApplicationInfo& app_info,
@@ -32,9 +36,9 @@ class device {
     const vk::Instance& instance() const;
     const vk::Device& logical() const;
 
-    vk::raii::Queue make_graphic_queue() const;
-    vk::raii::Queue make_present_queue() const;
-    vk::raii::Queue make_compute_queue() const;
+    const vk::Queue& graphic_queue() const;
+    const vk::Queue& present_queue() const;
+    const vk::Queue& compute_queue() const;
 
     vk::raii::Buffer make_buffer(const vk::BufferCreateInfo info) const;
     vk::raii::DeviceMemory make_memory(const vk::MemoryAllocateInfo& info) const;
@@ -60,6 +64,7 @@ class device {
 
     vk::raii::ShaderModule make_shader_module(const vk::ShaderModuleCreateInfo& info) const;
     vk::raii::Pipeline make_pipeline(const vk::GraphicsPipelineCreateInfo& info) const;
+    vk::raii::Pipeline make_pipeline(const vk::ComputePipelineCreateInfo& info) const;
     vk::raii::PipelineLayout make_pipeline_layout(const vk::PipelineLayoutCreateInfo& info) const;
 
     void copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const;
@@ -108,6 +113,7 @@ class texture {
   public:
     texture() = default;
     texture(const device& device, std::uint32_t width, std::uint32_t height);
+    texture(const device& device, std::uint32_t width, std::uint32_t height, vk::ImageUsageFlags usage);
 
     static constexpr vk::DescriptorSetLayoutBinding layout_binding(std::uint32_t binding) {
         return {binding, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment};

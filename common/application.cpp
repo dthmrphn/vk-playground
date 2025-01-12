@@ -31,9 +31,9 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
 
     // queue creation
     _graphic_queue_index = _device.queue_family_index(vk::QueueFlagBits::eGraphics);
-    _graphic_queue = _device.make_graphic_queue();
+    _graphic_queue = _device.graphic_queue();
     _present_queue_index = _device.queue_family_index(vk::QueueFlagBits::eGraphics);
-    _present_queue = _device.make_graphic_queue();
+    _present_queue = _device.graphic_queue();
 
     // swapchain creation
     VkSurfaceKHR surf{};

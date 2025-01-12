@@ -68,6 +68,9 @@ device::device(const vk::ApplicationInfo& app_info,
 
     vk::DeviceCreateInfo device_ci{{}, queue_ci, enabled_layers, enabled_extensions};
     _logical_dev = {_physical_dev, device_ci};
+
+    _graphic_queue = _logical_dev.getQueue(queue_family_index(vk::QueueFlagBits::eGraphics), 0);
+    _compute_queue = _logical_dev.getQueue(queue_family_index(vk::QueueFlagBits::eCompute), 0);
 }
 
 std::uint32_t device::queue_family_index(vk::QueueFlags flags) const {
@@ -105,19 +108,16 @@ const vk::Device& device::logical() const {
     return *_logical_dev;
 }
 
-vk::raii::Queue device::make_graphic_queue() const {
-    const auto i = queue_family_index(vk::QueueFlagBits::eGraphics);
-    return _logical_dev.getQueue(i, 0);
+const vk::Queue& device::graphic_queue() const {
+    return *_graphic_queue;
 }
 
-vk::raii::Queue device::make_compute_queue() const {
-    const auto i = queue_family_index(vk::QueueFlagBits::eCompute);
-    return _logical_dev.getQueue(i, 0);
+const vk::Queue& device::compute_queue() const {
+    return *_compute_queue;
 }
 
-vk::raii::Queue device::make_present_queue() const {
-    const auto i = queue_family_index(vk::QueueFlagBits::eGraphics);
-    return _logical_dev.getQueue(i, 0);
+const vk::Queue& device::present_queue() const {
+    return *_present_queue;
 }
 
 vk::raii::Buffer device::make_buffer(const vk::BufferCreateInfo info) const {
@@ -314,17 +314,20 @@ void host_buffer::copy(void* data, vk::DeviceSize size) const {
 }
 
 texture::texture(const device& device, std::uint32_t width, std::uint32_t height)
+    : texture(device, width, height, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst) {}
+
+texture::texture(const device& device, std::uint32_t width, std::uint32_t height, vk::ImageUsageFlags usage)
     : _extent(width, height, 1) {
     vk::ImageCreateInfo ici{
         {},
         vk::ImageType::e2D,
-        vk::Format::eR8G8B8A8Srgb,
+        vk::Format::eR8G8B8A8Unorm,
         {width, height, 1},
         1,
         1,
         vk::SampleCountFlagBits::e1,
         vk::ImageTiling::eOptimal,
-        vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+        usage,
         vk::SharingMode::eExclusive,
     };
 
@@ -341,7 +344,7 @@ texture::texture(const device& device, std::uint32_t width, std::uint32_t height
         {},
         _img,
         vk::ImageViewType::e2D,
-        vk::Format::eR8G8B8A8Srgb,
+        vk::Format::eR8G8B8A8Unorm,
         {},
         {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };

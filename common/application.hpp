@@ -19,8 +19,8 @@ class application_base {
     std::uint32_t _graphic_queue_index{};
     std::uint32_t _present_queue_index{};
 
-    vk::raii::Queue _graphic_queue{nullptr};
-    vk::raii::Queue _present_queue{nullptr};
+    vk::Queue _graphic_queue{nullptr};
+    vk::Queue _present_queue{nullptr};
 
     vk::raii::RenderPass _render_pass{nullptr};
 
