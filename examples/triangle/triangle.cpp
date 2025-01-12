@@ -6,8 +6,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <triangle.vert.hpp>
 #include <triangle.frag.hpp>
+#include <triangle.vert.hpp>
 
 struct vertex {
     glm::vec2 pos;
@@ -166,8 +166,12 @@ void triangle::make_vertex_buffer() {
     }};
 
     constexpr auto size = sizeof(vertex) * verticies.size();
-    vulkan::host_buffer staging{_device, size, vk::BufferUsageFlagBits::eTransferSrc};
-    staging.copy(verticies.data(), size);
+    vulkan::host_buffer staging{
+        _device,
+        size,
+        vk::BufferUsageFlagBits::eTransferSrc,
+        verticies.data(),
+    };
 
     _verticies_buffer = {
         _device,
@@ -182,8 +186,12 @@ void triangle::make_indices_buffer() {
     std::array<std::uint32_t, 3> indicies = {0, 1, 2};
 
     constexpr auto size = sizeof(std::uint32_t) * indicies.size();
-    vulkan::host_buffer staging{_device, size, vk::BufferUsageFlagBits::eTransferSrc};
-    staging.copy(indicies.data(), size);
+    vulkan::host_buffer staging{
+        _device,
+        size,
+        vk::BufferUsageFlagBits::eTransferSrc,
+        indicies.data(),
+    };
 
     _indices_buffer = {
         _device,

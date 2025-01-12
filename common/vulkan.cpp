@@ -236,21 +236,7 @@ void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, v
 }
 
 void device::copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const {
-    cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
-                       vk::PipelineStageFlagBits::eTransfer,
-                       {},
-                       nullptr,
-                       nullptr,
-                       vk::ImageMemoryBarrier{
-                           {},
-                           vk::AccessFlagBits::eTransferWrite,
-                           vk::ImageLayout::eUndefined,
-                           vk::ImageLayout::eTransferDstOptimal,
-                           {},
-                           {},
-                           img,
-                           {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-                       });
+    image_transition(cb, img, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
     cb.copyBufferToImage(buf,
                          img,
@@ -264,21 +250,59 @@ void device::copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer&
                              extent,
                          });
 
-    cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                       vk::PipelineStageFlagBits::eFragmentShader,
-                       {},
-                       nullptr,
-                       nullptr,
-                       vk::ImageMemoryBarrier{
-                           vk::AccessFlagBits::eTransferWrite,
-                           vk::AccessFlagBits::eShaderRead,
-                           vk::ImageLayout::eTransferDstOptimal,
-                           vk::ImageLayout::eShaderReadOnlyOptimal,
-                           {},
-                           {},
-                           img,
-                           {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-                       });
+    image_transition(cb, img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+}
+
+void device::image_transition(const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const {
+}
+
+void device::image_transition(const vk::CommandBuffer& cb, const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const {
+    const auto src_stage{vk::PipelineStageFlagBits::eAllCommands};
+    const auto dst_stage{vk::PipelineStageFlagBits::eAllCommands};
+
+    vk::ImageMemoryBarrier barrier{
+        {},
+        {},
+        old_layout,
+        new_layout,
+        {},
+        {},
+        img,
+        {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+    };
+
+    switch (old_layout) {
+    case vk::ImageLayout::eUndefined:
+        barrier.srcAccessMask = vk::AccessFlagBits::eNone;
+        break;
+    case vk::ImageLayout::eTransferSrcOptimal:
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+        break;
+    case vk::ImageLayout::eTransferDstOptimal:
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        break;
+    case vk::ImageLayout::eShaderReadOnlyOptimal:
+        barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
+        break;
+    default:
+        break;
+    }
+
+    switch (new_layout) {
+    case vk::ImageLayout::eTransferSrcOptimal:
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+        break;
+    case vk::ImageLayout::eTransferDstOptimal:
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+        break;
+    case vk::ImageLayout::eShaderReadOnlyOptimal:
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+        break;
+    default:
+        break;
+    }
+
+    cb.pipelineBarrier(src_stage, dst_stage, {}, {}, {}, barrier);
 }
 
 buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) {
@@ -304,9 +328,13 @@ const vk::raii::DeviceMemory& buffer::mem() const {
 device_buffer::device_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage)
     : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eDeviceLocal) {}
 
-host_buffer::host_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage)
+host_buffer::host_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, void* data)
     : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) {
     _mapped = _mem.mapMemory(0, size);
+
+    if (data) {
+        copy(data, size);
+    }
 }
 
 void host_buffer::copy(void* data, vk::DeviceSize size) const {

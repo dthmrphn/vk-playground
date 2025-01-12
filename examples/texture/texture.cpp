@@ -9,8 +9,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#include <texture.vert.hpp>
 #include <texture.frag.hpp>
+#include <texture.vert.hpp>
 
 struct vertex {
     glm::vec2 pos;
@@ -179,8 +179,12 @@ void texture::make_vertex_buffer() {
     }};
 
     constexpr auto size = sizeof(vertex) * verticies.size();
-    vulkan::host_buffer staging{_device, size, vk::BufferUsageFlagBits::eTransferSrc};
-    staging.copy(verticies.data(), size);
+    vulkan::host_buffer staging{
+        _device,
+        size,
+        vk::BufferUsageFlagBits::eTransferSrc,
+        verticies.data(),
+    };
 
     _verticies_buffer = {
         _device,
@@ -195,8 +199,12 @@ void texture::make_indices_buffer() {
     std::array<std::uint32_t, 6> indicies = {0, 1, 2, 2, 3, 0};
 
     constexpr auto size = sizeof(std::uint32_t) * indicies.size();
-    vulkan::host_buffer staging{_device, size, vk::BufferUsageFlagBits::eTransferSrc};
-    staging.copy(indicies.data(), size);
+    vulkan::host_buffer staging{
+        _device,
+        size,
+        vk::BufferUsageFlagBits::eTransferSrc,
+        indicies.data(),
+    };
 
     _indices_buffer = {
         _device,
@@ -222,8 +230,8 @@ void texture::make_texture_image() {
         _device,
         size,
         vk::BufferUsageFlagBits::eTransferSrc,
+        data,
     };
-    staging.copy(data, size);
 
     _texture = {_device, width, height};
 

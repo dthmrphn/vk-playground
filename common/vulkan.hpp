@@ -72,6 +72,9 @@ class device {
 
     void copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const;
     void copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const;
+
+    void image_transition(const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const;
+    void image_transition(const vk::CommandBuffer& cb, const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const;
 };
 
 class buffer {
@@ -98,7 +101,7 @@ class host_buffer : public buffer {
 
   public:
     host_buffer() = default;
-    host_buffer(const device& dev, vk::DeviceSize size, vk::BufferUsageFlags usage);
+    host_buffer(const device& dev, vk::DeviceSize size, vk::BufferUsageFlags usage, void* data = nullptr);
 
     void copy(void* data, vk::DeviceSize size) const;
 };
