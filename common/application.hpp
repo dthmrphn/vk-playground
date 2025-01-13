@@ -40,7 +40,6 @@ class application_base {
     GLFWwindow* _window;
 
     std::uint32_t acquire();
-    // void record(std::uint32_t i);
     void present(std::uint32_t i);
 
     void render();
@@ -69,9 +68,7 @@ class application : public application_base {
 
     void run() {
         while (loop_handler()) {
-            const auto i = acquire();
-            impl().record(i);
-            present(i);
+            impl().render();
         }
 
         _device.logical().waitIdle();

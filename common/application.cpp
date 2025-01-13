@@ -27,7 +27,7 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     std::vector<const char*> layers{enabled_layers, enabled_layers + 1};
-    _device = vulkan::device{app_info, layers, extensions, vk::QueueFlagBits::eGraphics, true};
+    _device = vulkan::device{app_info, layers, extensions, vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, true};
 
     // queue creation
     _graphic_queue_index = _device.queue_family_index(vk::QueueFlagBits::eGraphics);
@@ -120,22 +120,6 @@ std::uint32_t application_base::acquire() {
     return index;
 }
 
-// void application_base::record(std::uint32_t index) {
-//     const auto& cb = _frames[_current_frame].command_buffer;
-//
-//     vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
-//     vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[index], {{0, 0}, _swapchain.extent()}, clear_value};
-//     vk::Viewport viewport{0.0f, 0.0f, (float)_swapchain.extent().width, (float)_swapchain.extent().height, 0.0f, 1.0f};
-//
-//     cb.reset();
-//     cb.begin({});
-//     cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
-//     cb.setViewport(0, viewport);
-//     cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
-//     cb.endRenderPass();
-//     cb.end();
-// }
-
 void application_base::present(std::uint32_t index) {
     const auto& [cb, image_available_semaphore, render_finished_semaphore, fence] = _frames[_current_frame];
     vk::PipelineStageFlags wait_flags{vk::PipelineStageFlagBits::eColorAttachmentOutput};
@@ -154,12 +138,6 @@ void application_base::present(std::uint32_t index) {
     }
 
     _current_frame = (_current_frame + 1) % frames_in_flight;
-}
-
-void application_base::render() {
-    const auto i = acquire();
-    // record(i);
-    present(i);
 }
 
 void application_base::resize_handler(GLFWwindow* win, int w, int h) {

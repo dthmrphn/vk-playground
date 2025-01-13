@@ -53,7 +53,7 @@ struct texture : public common::application<texture> {
     vk::raii::DescriptorPool _descriptor_pool{nullptr};
     vk::raii::DescriptorSet _descriptor_set{nullptr};
 
-    texture() : common::application<texture>({"simple", 1, "engine", 1, VK_API_VERSION_1_0}, 800, 600) {
+    texture() : common::application<texture>({"texture", 1, "engine", 1, VK_API_VERSION_1_0}, 800, 600) {
         make_vertex_buffer();
         make_indices_buffer();
         make_texture_image();
@@ -163,109 +163,107 @@ struct texture : public common::application<texture> {
         _pipeline = _device.make_pipeline(pci);
     }
 
-    void make_vertex_buffer();
-    void make_indices_buffer();
-    void make_texture_image();
+    void make_vertex_buffer() {
+        std::array<vertex, 4> verticies = {{
+            {{-0.5, +0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{+0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{+0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{-0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+        }};
 
-    void record(std::uint32_t i);
-};
+        constexpr auto size = sizeof(vertex) * verticies.size();
+        vulkan::host_buffer staging{
+            _device,
+            size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            verticies.data(),
+        };
 
-void texture::make_vertex_buffer() {
-    std::array<vertex, 4> verticies = {{
-        {{-0.5, +0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
-        {{+0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
-        {{+0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
-        {{-0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
-    }};
+        _verticies_buffer = {
+            _device,
+            size,
+            vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+        };
 
-    constexpr auto size = sizeof(vertex) * verticies.size();
-    vulkan::host_buffer staging{
-        _device,
-        size,
-        vk::BufferUsageFlagBits::eTransferSrc,
-        verticies.data(),
-    };
-
-    _verticies_buffer = {
-        _device,
-        size,
-        vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-    };
-
-    _device.copy_buffers(staging.buf(), _verticies_buffer.buf(), size);
-}
-
-void texture::make_indices_buffer() {
-    std::array<std::uint32_t, 6> indicies = {0, 1, 2, 2, 3, 0};
-
-    constexpr auto size = sizeof(std::uint32_t) * indicies.size();
-    vulkan::host_buffer staging{
-        _device,
-        size,
-        vk::BufferUsageFlagBits::eTransferSrc,
-        indicies.data(),
-    };
-
-    _indices_buffer = {
-        _device,
-        size,
-        vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-    };
-
-    _device.copy_buffers(staging.buf(), _indices_buffer.buf(), size);
-}
-
-void texture::make_texture_image() {
-    int w{}, h{}, c{}, wc{4};
-    auto data = stbi_load("textures/vulkan.png", &w, &h, &c, wc);
-    if (!data) {
-        throw std::runtime_error("failed to load image");
+        _device.copy_buffers(staging.buf(), _verticies_buffer.buf(), size);
     }
 
-    std::uint32_t width = w;
-    std::uint32_t height = h;
+    void make_indices_buffer() {
+        std::array<std::uint32_t, 6> indicies = {0, 1, 2, 2, 3, 0};
 
-    const vk::DeviceSize size = w * h * wc;
-    vulkan::host_buffer staging{
-        _device,
-        size,
-        vk::BufferUsageFlagBits::eTransferSrc,
-        data,
-    };
+        constexpr auto size = sizeof(std::uint32_t) * indicies.size();
+        vulkan::host_buffer staging{
+            _device,
+            size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            indicies.data(),
+        };
 
-    _texture = {_device, width, height};
+        _indices_buffer = {
+            _device,
+            size,
+            vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+        };
 
-    _device.copy_buffer_to_image(staging.buf(), _texture.image(), _texture.extent());
-}
+        _device.copy_buffers(staging.buf(), _indices_buffer.buf(), size);
+    }
 
-void texture::record(std::uint32_t i) {
-    const auto& cb = _frames[_current_frame].command_buffer;
+    void make_texture_image() {
+        int w{}, h{}, c{}, wc{4};
+        auto data = stbi_load("textures/vulkan.png", &w, &h, &c, wc);
+        if (!data) {
+            throw std::runtime_error("failed to load image");
+        }
 
-    const float time = glfwGetTime();
-    uniform ubo{
-        glm::rotate(glm::mat4(1.0f), time, glm::vec3(0.0f, 0.0f, 1.0f)),
-        glm::mat4(1.0f),
-        glm::mat4(1.0f),
-    };
-    _uniform_buffer.copy(&ubo, sizeof(ubo));
+        std::uint32_t width = w;
+        std::uint32_t height = h;
 
-    vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
-    vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[i], {{0, 0}, _swapchain.extent()}, clear_value};
-    vk::Viewport viewport{0.0f, 0.0f, (float)_swapchain.extent().width, (float)_swapchain.extent().height, 0.0f, 1.0f};
+        const vk::DeviceSize size = w * h * wc;
+        vulkan::host_buffer staging{
+            _device,
+            size,
+            vk::BufferUsageFlagBits::eTransferSrc,
+            data,
+        };
 
-    cb.reset();
-    cb.begin({});
-    cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
-    cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
-    cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipeline_layout, 0, {_descriptor_set}, nullptr);
-    cb.bindVertexBuffers(0, *_verticies_buffer.buf(), {0});
-    cb.bindIndexBuffer(_indices_buffer.buf(), 0, vk::IndexType::eUint32);
-    cb.setViewport(0, viewport);
-    cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
-    cb.drawIndexed(6, 1, 0, 0, 0);
-    cb.endRenderPass();
-    cb.end();
-}
+        _texture = {_device, width, height};
+
+        _device.copy_buffer_to_image(staging.buf(), _texture.image(), _texture.extent());
+    }
+
+    void render() {
+        auto i = acquire();
+
+        const auto& cb = _frames[_current_frame].command_buffer;
+
+        const float time = glfwGetTime();
+        uniform ubo{
+            glm::rotate(glm::mat4(1.0f), time, glm::vec3(0.0f, 0.0f, 1.0f)),
+            glm::mat4(1.0f),
+            glm::mat4(1.0f),
+        };
+        _uniform_buffer.copy(&ubo, sizeof(ubo));
+
+        vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
+        vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[i], {{0, 0}, _swapchain.extent()}, clear_value};
+        vk::Viewport viewport{0.0f, 0.0f, (float)_swapchain.extent().width, (float)_swapchain.extent().height, 0.0f, 1.0f};
+
+        cb.reset();
+        cb.begin({});
+        cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
+        cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
+        cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipeline_layout, 0, {_descriptor_set}, nullptr);
+        cb.bindVertexBuffers(0, *_verticies_buffer.buf(), {0});
+        cb.bindIndexBuffer(_indices_buffer.buf(), 0, vk::IndexType::eUint32);
+        cb.setViewport(0, viewport);
+        cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
+        cb.drawIndexed(6, 1, 0, 0, 0);
+        cb.endRenderPass();
+        cb.end();
+
+        present(i);
+    }
+};
 
 int main() {
     try {
