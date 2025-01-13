@@ -183,6 +183,7 @@ struct compute : public common::application<compute> {
         _graphic_semaphore = _device.make_semaphore({});
         vk::SubmitInfo si{{}, {}, {}, *_graphic_semaphore};
         _graphic_queue.submit(si);
+        _graphic_queue.waitIdle();
 
         make_compute_context();
     }
