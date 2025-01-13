@@ -18,7 +18,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL device::debug_callback(VkDebugUtilsMessageSeverit
                                                       VkDebugUtilsMessageTypeFlagsEXT message_types,
                                                       VkDebugUtilsMessengerCallbackDataEXT const* callback_data,
                                                       void* user_data) {
-    fmt::print("{}\n", callback_data->pMessage);
+    fmt::print("{}\n\n", callback_data->pMessage);
     return false;
 }
 
@@ -192,6 +192,10 @@ vk::raii::Pipeline device::make_pipeline(const vk::GraphicsPipelineCreateInfo& i
     return {_logical_dev, nullptr, info};
 }
 
+vk::raii::Pipeline device::make_pipeline(const vk::ComputePipelineCreateInfo& info) const {
+    return {_logical_dev, nullptr, info};
+}
+
 vk::raii::PipelineLayout device::make_pipeline_layout(const vk::PipelineLayoutCreateInfo& info) const {
     return {_logical_dev, info};
 }
@@ -254,6 +258,21 @@ void device::copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer&
 }
 
 void device::image_transition(const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const {
+    const auto i = queue_family_index(vk::QueueFlagBits::eTransfer);
+    const auto q = _logical_dev.getQueue(i, 0);
+    const auto pool = make_command_pool({
+        vk::CommandPoolCreateFlagBits::eTransient,
+        i,
+    });
+
+    const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
+
+    cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    image_transition(cb, img, old_layout, new_layout);
+    cb.end();
+
+    q.submit(vk::SubmitInfo{{}, {}, *cb});
+    q.waitIdle();
 }
 
 void device::image_transition(const vk::CommandBuffer& cb, const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const {

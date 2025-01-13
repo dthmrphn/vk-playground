@@ -42,7 +42,6 @@ class application_base {
     std::uint32_t acquire();
     void present(std::uint32_t i);
 
-    void render();
     void update_swapchain(std::uint32_t w, std::uint32_t h);
 
     static void resize_handler(GLFWwindow*, int, int);

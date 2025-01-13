@@ -119,7 +119,7 @@ class texture {
     texture(const device& device, std::uint32_t width, std::uint32_t height, vk::ImageUsageFlags usage);
 
     static constexpr vk::DescriptorSetLayoutBinding layout_binding(std::uint32_t binding) {
-        return {binding, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment};
+        return {binding, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eAll};
     }
 
     const vk::Image& image() const;

@@ -42,7 +42,7 @@ struct uniform {
 };
 
 struct compute : public common::application<compute> {
-    static constexpr auto local_size = 16;
+    static constexpr auto local_size = 32;
 
     vk::raii::Pipeline _pipeline{nullptr};
     vk::raii::PipelineLayout _pipeline_layout{nullptr};
@@ -56,6 +56,8 @@ struct compute : public common::application<compute> {
     vk::raii::DescriptorSetLayout _descriptor_layout{nullptr};
     vk::raii::DescriptorPool _descriptor_pool{nullptr};
     vk::raii::DescriptorSet _descriptor_set{nullptr};
+
+    vk::raii::Semaphore _graphic_semaphore{nullptr};
 
     struct {
         vk::Queue queue{nullptr};
@@ -72,7 +74,6 @@ struct compute : public common::application<compute> {
         make_vertex_buffer();
         make_indices_buffer();
         make_input_image();
-        make_output_image();
 
         _uniform_buffer = {
             _device,
@@ -101,7 +102,7 @@ struct compute : public common::application<compute> {
         _descriptor_set = std::move(_device.make_descriptor_sets(dsai).front());
 
         vk::DescriptorBufferInfo dbi{_uniform_buffer.buf(), 0, sizeof(uniform)};
-        vk::DescriptorImageInfo dii{_input_texture.sampler(), _input_texture.view(), vk::ImageLayout::eShaderReadOnlyOptimal};
+        vk::DescriptorImageInfo dii{_output_texture.sampler(), _output_texture.view(), vk::ImageLayout::eGeneral};
         vk::WriteDescriptorSet wdss[] = {
             {_descriptor_set, 0, 0, vk::DescriptorType::eUniformBuffer, {}, dbi},
             {_descriptor_set, 1, 0, vk::DescriptorType::eCombinedImageSampler, dii},
@@ -179,7 +180,11 @@ struct compute : public common::application<compute> {
 
         _pipeline = _device.make_pipeline(pci);
 
-        // make_compute_context();
+        _graphic_semaphore = _device.make_semaphore({});
+        vk::SubmitInfo si{{}, {}, {}, *_graphic_semaphore};
+        _graphic_queue.submit(si);
+
+        make_compute_context();
     }
 
     void make_vertex_buffer() {
@@ -241,10 +246,12 @@ struct compute : public common::application<compute> {
             _device,
             width,
             height,
-            vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
+            vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferDst,
         };
 
         _device.copy_buffer_to_image(staging.buf(), _input_texture.image(), _input_texture.extent());
+
+        _device.image_transition(_input_texture.image(), vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral);
 
         _output_texture = {
             _device,
@@ -252,31 +259,8 @@ struct compute : public common::application<compute> {
             height,
             vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
         };
-    }
 
-    void make_output_image() {
-        const auto cb = std::move(_device.make_command_buffers({_command_pool, vk::CommandBufferLevel::ePrimary, 1}).front());
-        // undefined -> general
-        cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-        cb.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
-                           vk::PipelineStageFlagBits::eAllCommands,
-                           {},
-                           nullptr,
-                           nullptr,
-                           vk::ImageMemoryBarrier{
-                               {},
-                               vk::AccessFlagBits::eTransferWrite,
-                               vk::ImageLayout::eUndefined,
-                               vk::ImageLayout::eGeneral,
-                               {},
-                               {},
-                               _output_texture.image(),
-                               {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-                           });
-        cb.end();
-
-        _graphic_queue.submit(vk::SubmitInfo{{}, {}, *cb});
-        _graphic_queue.waitIdle();
+        _device.image_transition(_output_texture.image(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
     }
 
     void make_compute_context() {
@@ -309,6 +293,7 @@ struct compute : public common::application<compute> {
             vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eCompute, comp_shader, "main"},
         };
         vk::ComputePipelineCreateInfo cpci{{}, pssci, _compute.pipeline_layout};
+        _compute.pipeline = _device.make_pipeline(cpci);
 
         _compute.command_pool = _device.make_command_pool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _graphic_queue_index});
         vk::CommandBufferAllocateInfo cbai{_compute.command_pool, vk::CommandBufferLevel::ePrimary, 1};
@@ -317,7 +302,53 @@ struct compute : public common::application<compute> {
         _compute.semaphore = _device.make_semaphore({});
     }
 
-    void record(std::uint32_t i) {
+    void record_compute() {
+        _compute.queue.waitIdle();
+
+        _compute.command_buffer.begin({});
+        _compute.command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, _compute.pipeline);
+        _compute.command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, _compute.pipeline_layout, 0, *_compute.descriptor_set, nullptr);
+        _compute.command_buffer.dispatch(_input_texture.extent().width / local_size, _input_texture.extent().height / local_size, 1);
+        _compute.command_buffer.end();
+
+        vk::PipelineStageFlags wait_flags{vk::PipelineStageFlagBits::eComputeShader};
+
+        vk::SubmitInfo info{
+            *_graphic_semaphore,
+            wait_flags,
+            *_compute.command_buffer,
+            *_compute.semaphore,
+        };
+        _compute.queue.submit(info);
+    }
+
+    void present(std::uint32_t index) {
+        const auto& [cb, image_available_semaphore, render_finished_semaphore, fence] = _frames[_current_frame];
+        vk::PipelineStageFlags wait_flags[] = {vk::PipelineStageFlagBits::eVertexInput, vk::PipelineStageFlagBits::eColorAttachmentOutput};
+        vk::Semaphore wait_semaphores[] = {_compute.semaphore, image_available_semaphore};
+        vk::Semaphore signal_semaphores[] = {_graphic_semaphore, render_finished_semaphore};
+        vk::SubmitInfo submit{
+            wait_semaphores,
+            wait_flags,
+            *cb,
+            signal_semaphores,
+        };
+        _graphic_queue.submit(submit, fence);
+
+        vk::PresentInfoKHR present_info{*render_finished_semaphore, *_swapchain.get(), index};
+        auto rv = _present_queue.presentKHR(present_info);
+        if (rv != vk::Result::eSuccess) {
+            fmt::print("present err: {}\n", vk::to_string(rv));
+        }
+
+        _current_frame = (_current_frame + 1) % frames_in_flight;
+    }
+
+    void render() {
+        auto i = acquire();
+
+        record_compute();
+
         const auto& cb = _frames[_current_frame].command_buffer;
 
         const float time = glfwGetTime();
@@ -344,6 +375,8 @@ struct compute : public common::application<compute> {
         cb.drawIndexed(6, 1, 0, 0, 0);
         cb.endRenderPass();
         cb.end();
+
+        present(i);
     }
 };
 
