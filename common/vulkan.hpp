@@ -20,8 +20,9 @@ class device {
   public:
     device() = default;
     device(const vk::ApplicationInfo& app_info,
-           const std::vector<const char*>& layers,
-           const std::vector<const char*>& extensions,
+           const vk::ArrayProxy<const char*>& layers,
+           const vk::ArrayProxy<const char*>& device_extensions,
+           const vk::ArrayProxy<const char*>& instance_extensions,
            vk::QueueFlags queues, bool debug);
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT,

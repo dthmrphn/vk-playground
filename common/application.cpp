@@ -7,7 +7,7 @@ constexpr static const char* enabled_layers[] = {
     "VK_LAYER_KHRONOS_validation",
 };
 
-constexpr static const char* enabled_extensions[] = {
+constexpr static const char* device_extensions[] = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -26,8 +26,14 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     std::vector<const char*> extensions{exts, exts + count};
     extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
-    std::vector<const char*> layers{enabled_layers, enabled_layers + 1};
-    _device = vulkan::device{app_info, layers, extensions, vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, true};
+    _device = vulkan::device{
+        app_info,
+        enabled_layers,
+        device_extensions,
+        extensions,
+        vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,
+        true,
+    };
 
     // queue creation
     _graphic_queue_index = _device.queue_family_index(vk::QueueFlagBits::eGraphics);

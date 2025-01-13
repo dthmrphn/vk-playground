@@ -6,14 +6,6 @@
 
 namespace vulkan {
 
-constexpr static const char* enabled_layers[] = {
-    "VK_LAYER_KHRONOS_validation",
-};
-
-constexpr static const char* enabled_extensions[] = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
-
 VKAPI_ATTR VkBool32 VKAPI_CALL device::debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
                                                       VkDebugUtilsMessageTypeFlagsEXT message_types,
                                                       VkDebugUtilsMessengerCallbackDataEXT const* callback_data,
@@ -23,12 +15,13 @@ VKAPI_ATTR VkBool32 VKAPI_CALL device::debug_callback(VkDebugUtilsMessageSeverit
 }
 
 device::device(const vk::ApplicationInfo& app_info,
-               const std::vector<const char*>& layers,
-               const std::vector<const char*>& extensions,
+               const vk::ArrayProxy<const char*>& layers,
+               const vk::ArrayProxy<const char*>& device_extensions,
+               const vk::ArrayProxy<const char*>& instance_extensions,
                vk::QueueFlags queues, bool debug) : device() {
     _instance = {
         _context,
-        vk::InstanceCreateInfo{{}, &app_info, layers, extensions},
+        vk::InstanceCreateInfo{{}, &app_info, layers, instance_extensions},
     };
 
     _physical_dev = vk::raii::PhysicalDevices{_instance}.front();
@@ -66,7 +59,7 @@ device::device(const vk::ApplicationInfo& app_info,
         queue_ci.emplace_back(vk::DeviceQueueCreateFlags(), i, 1, &priority);
     }
 
-    vk::DeviceCreateInfo device_ci{{}, queue_ci, enabled_layers, enabled_extensions};
+    vk::DeviceCreateInfo device_ci{{}, queue_ci, layers, device_extensions};
     _logical_dev = {_physical_dev, device_ci};
 
     _graphic_queue = _logical_dev.getQueue(queue_family_index(vk::QueueFlagBits::eGraphics), 0);
