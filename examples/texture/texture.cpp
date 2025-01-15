@@ -111,7 +111,7 @@ struct texture : public common::application<texture> {
             vk::False,
             vk::False,
             vk::PolygonMode::eFill,
-            vk::CullModeFlagBits::eBack,
+            vk::CullModeFlagBits::eNone,
             vk::FrontFace::eCounterClockwise,
             vk::False,
             0.0f,
@@ -166,16 +166,42 @@ struct texture : public common::application<texture> {
     }
 
     void make_vertex_buffer() {
-        std::array<vertex, 8> verticies = {{
-            {{-0.5, +0.5, +0.0}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
-            {{+0.5, +0.5, +0.0}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
-            {{+0.5, -0.5, +0.0}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
-            {{-0.5, -0.5, +0.0}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
-
+        std::array<vertex, 24> verticies = {{
+            // front
+            {{-0.5, +0.5, +0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{+0.5, +0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{+0.5, -0.5, +0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{-0.5, -0.5, +0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+            
+            // back
             {{-0.5, +0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
             {{+0.5, +0.5, -0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
             {{+0.5, -0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
             {{-0.5, -0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+            
+            // left
+            {{-0.5, -0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{-0.5, -0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{-0.5, +0.5, +0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{-0.5, +0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+
+            // right
+            {{+0.5, +0.5, +0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{+0.5, +0.5, -0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{+0.5, -0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{+0.5, -0.5, +0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+
+            // top
+            {{-0.5, +0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{+0.5, +0.5, -0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{+0.5, +0.5, +0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{-0.5, +0.5, +0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+
+            // bottom
+            {{-0.5, -0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{+0.5, -0.5, -0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{+0.5, -0.5, +0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{-0.5, -0.5, +0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
         }};
 
         constexpr auto size = sizeof(vertex) * verticies.size();
@@ -196,7 +222,14 @@ struct texture : public common::application<texture> {
     }
 
     void make_indices_buffer() {
-        std::array<std::uint32_t, 12> indicies = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
+        std::array<std::uint32_t, 36> indicies = {
+            0, 1, 2, 2, 3, 0, 
+            4, 5, 6, 6, 7, 4,
+            8, 9, 10, 10, 11, 8,
+            12, 13, 14, 14, 15, 12,
+            16, 17, 18, 18, 19, 16,
+            20, 21, 22, 22, 23, 20,
+        };
 
         constexpr auto size = sizeof(std::uint32_t) * indicies.size();
         vulkan::host_buffer staging{
@@ -245,8 +278,8 @@ struct texture : public common::application<texture> {
         const auto [w, h] = _swapchain.extent();
         const float time = glfwGetTime();
         uniform ubo{
-            glm::rotate(glm::mat4(1.0f), time, glm::vec3(0.0f, 0.0f, 1.0f)),
-            glm::lookAt(glm::vec3(1.0f, 1.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+            glm::rotate(glm::mat4(1.0f), time, glm::vec3(1.0f, 1.0f, 1.0f)),
+            glm::lookAt(glm::vec3(1.0f, 2.0f, 4.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
             glm::perspective(glm::radians(45.0f), (float)w / h, 1.0f, 10.0f),
         };
         _uniform_buffer.copy(&ubo, sizeof(ubo));
@@ -267,7 +300,7 @@ struct texture : public common::application<texture> {
         cb.bindIndexBuffer(_indices_buffer.buf(), 0, vk::IndexType::eUint32);
         cb.setViewport(0, viewport);
         cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
-        cb.drawIndexed(12, 1, 0, 0, 0);
+        cb.drawIndexed(36, 1, 0, 0, 0);
         cb.endRenderPass();
         cb.end();
 
