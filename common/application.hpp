@@ -34,19 +34,26 @@ class application_base {
         vk::raii::Semaphore render_finished_semaphore{nullptr};
         vk::raii::Fence fence{nullptr};
     };
-
     std::array<frame_data, frames_in_flight> _frames;
+
+    struct depth {
+        vk::raii::Image image{nullptr};
+        vk::raii::ImageView view{nullptr};
+        vk::raii::DeviceMemory memory{nullptr};
+    } _depth;
 
     GLFWwindow* _window;
 
     std::uint32_t acquire();
     void present(std::uint32_t i);
 
-    void update_swapchain(std::uint32_t w, std::uint32_t h);
-
-    static void resize_handler(GLFWwindow*, int, int);
-
     bool loop_handler() const;
+
+  private:
+    static void resize_handler(GLFWwindow*, int, int);
+    void update_swapchain(std::uint32_t w, std::uint32_t h);
+    void make_framebuffers();
+    void make_depth_image();
 
   public:
     application_base(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h);

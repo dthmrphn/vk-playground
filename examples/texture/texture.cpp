@@ -13,7 +13,7 @@
 #include <texture.vert.hpp>
 
 struct vertex {
-    glm::vec2 pos;
+    glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 coord;
 
@@ -23,7 +23,7 @@ struct vertex {
 
     static constexpr std::array<vk::VertexInputAttributeDescription, 3> attribute_desc() {
         return {
-            vk::VertexInputAttributeDescription{0, 0, vk::Format::eR32G32Sfloat, offsetof(vertex, pos)},
+            vk::VertexInputAttributeDescription{0, 0, vk::Format::eR32G32B32Sfloat, offsetof(vertex, pos)},
             vk::VertexInputAttributeDescription{1, 0, vk::Format::eR32G32B32Sfloat, offsetof(vertex, color)},
             vk::VertexInputAttributeDescription{2, 0, vk::Format::eR32G32Sfloat, offsetof(vertex, coord)},
         };
@@ -103,6 +103,8 @@ struct texture : public common::application<texture> {
         constexpr auto attribute_desc = vertex::attribute_desc();
         vk::PipelineVertexInputStateCreateInfo vertex_input_state{{}, binding_desc, attribute_desc};
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_state{{}, vk::PrimitiveTopology::eTriangleList, vk::False};
+        vk::PipelineDepthStencilStateCreateInfo depth_state{{}, true, true, vk::CompareOp::eLess, false, false};
+
         vk::PipelineViewportStateCreateInfo viewport_state{{}, 1, nullptr, 1, nullptr};
         vk::PipelineRasterizationStateCreateInfo rasterization_state{
             {},
@@ -153,7 +155,7 @@ struct texture : public common::application<texture> {
             &viewport_state,
             &rasterization_state,
             &multisample_state,
-            nullptr,
+            &depth_state,
             &colorblend_state,
             &dynamic_state,
             _pipeline_layout,
@@ -164,11 +166,16 @@ struct texture : public common::application<texture> {
     }
 
     void make_vertex_buffer() {
-        std::array<vertex, 4> verticies = {{
-            {{-0.5, +0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
-            {{+0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
-            {{+0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
-            {{-0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+        std::array<vertex, 8> verticies = {{
+            {{-0.5, +0.5, +0.0}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{+0.5, +0.5, +0.0}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{+0.5, -0.5, +0.0}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{-0.5, -0.5, +0.0}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+
+            {{-0.5, +0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
+            {{+0.5, +0.5, -0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
+            {{+0.5, -0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
+            {{-0.5, -0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
         }};
 
         constexpr auto size = sizeof(vertex) * verticies.size();
@@ -189,7 +196,7 @@ struct texture : public common::application<texture> {
     }
 
     void make_indices_buffer() {
-        std::array<std::uint32_t, 6> indicies = {0, 1, 2, 2, 3, 0};
+        std::array<std::uint32_t, 12> indicies = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
 
         constexpr auto size = sizeof(std::uint32_t) * indicies.size();
         vulkan::host_buffer staging{
@@ -235,18 +242,21 @@ struct texture : public common::application<texture> {
         auto i = acquire();
 
         const auto& cb = _frames[_current_frame].command_buffer;
-
+        const auto [w, h] = _swapchain.extent();
         const float time = glfwGetTime();
         uniform ubo{
             glm::rotate(glm::mat4(1.0f), time, glm::vec3(0.0f, 0.0f, 1.0f)),
-            glm::mat4(1.0f),
-            glm::mat4(1.0f),
+            glm::lookAt(glm::vec3(1.0f, 1.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+            glm::perspective(glm::radians(45.0f), (float)w / h, 1.0f, 10.0f),
         };
         _uniform_buffer.copy(&ubo, sizeof(ubo));
 
-        vk::ClearValue clear_value{vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f}};
-        vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[i], {{0, 0}, _swapchain.extent()}, clear_value};
-        vk::Viewport viewport{0.0f, 0.0f, (float)_swapchain.extent().width, (float)_swapchain.extent().height, 0.0f, 1.0f};
+        vk::ClearValue clear_values[] = {
+            vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f},
+            vk::ClearDepthStencilValue{1.0f, 0},
+        };
+        vk::RenderPassBeginInfo rpbi{_render_pass, _framebuffers[i], {{0, 0}, _swapchain.extent()}, clear_values};
+        vk::Viewport viewport{0.0f, 0.0f, (float)w, (float)h, 0.0f, 1.0f};
 
         cb.reset();
         cb.begin({});
@@ -257,7 +267,7 @@ struct texture : public common::application<texture> {
         cb.bindIndexBuffer(_indices_buffer.buf(), 0, vk::IndexType::eUint32);
         cb.setViewport(0, viewport);
         cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
-        cb.drawIndexed(6, 1, 0, 0, 0);
+        cb.drawIndexed(12, 1, 0, 0, 0);
         cb.endRenderPass();
         cb.end();
 

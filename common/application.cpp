@@ -57,31 +57,55 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
         _frames[i].command_buffer = std::move(buffers[i]);
     }
 
+    // depth image creation
+    make_depth_image();
+
     // render pass creation
-    vk::AttachmentDescription attachment_desc{
-        {},
-        _swapchain.format().format,
-        vk::SampleCountFlagBits::e1,
-        vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore,
-        vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eDontCare,
-        vk::ImageLayout::eUndefined,
-        vk::ImageLayout::ePresentSrcKHR,
+    vk::AttachmentDescription attachments[] = {
+        vk::AttachmentDescription{
+            {},
+            _swapchain.format().format,
+            vk::SampleCountFlagBits::e1,
+            vk::AttachmentLoadOp::eClear,
+            vk::AttachmentStoreOp::eStore,
+            vk::AttachmentLoadOp::eDontCare,
+            vk::AttachmentStoreOp::eDontCare,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::ePresentSrcKHR,
+        },
+        vk::AttachmentDescription{
+            {},
+            vk::Format::eD32Sfloat,
+            vk::SampleCountFlagBits::e1,
+            vk::AttachmentLoadOp::eClear,
+            vk::AttachmentStoreOp::eDontCare,
+            vk::AttachmentLoadOp::eDontCare,
+            vk::AttachmentStoreOp::eDontCare,
+            vk::ImageLayout::eUndefined,
+            vk::ImageLayout::eDepthStencilAttachmentOptimal,
+        },
     };
-    vk::AttachmentReference attachment_ref{0, vk::ImageLayout::eColorAttachmentOptimal};
-    vk::SubpassDescription subpass_desc{{}, vk::PipelineBindPoint::eGraphics, {}, attachment_ref};
+    vk::AttachmentReference color_attachment_ref{0, vk::ImageLayout::eColorAttachmentOptimal};
+    vk::AttachmentReference depth_attachment_ref{1, vk::ImageLayout::eDepthStencilAttachmentOptimal};
+    vk::SubpassDescription subpass_desc{
+        {},
+        vk::PipelineBindPoint::eGraphics,
+        {},
+        color_attachment_ref,
+        nullptr,
+        &depth_attachment_ref,
+    };
     vk::SubpassDependency subpass_dep{
         VK_SUBPASS_EXTERNAL,
         0,
-        vk::PipelineStageFlagBits::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests,
         vk::AccessFlagBits::eNone,
-        vk::AccessFlagBits::eColorAttachmentWrite,
+        vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite,
     };
     vk::RenderPassCreateInfo rpci{
         {},
-        attachment_desc,
+        attachments,
         subpass_desc,
         subpass_dep,
     };
@@ -89,17 +113,7 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     _render_pass = _device.make_render_pass(rpci);
 
     // framebuffer creation
-    for (const auto& iv : _swapchain.image_views()) {
-        vk::FramebufferCreateInfo fbci{
-            {},
-            _render_pass,
-            iv,
-            _swapchain.extent().width,
-            _swapchain.extent().height,
-            1,
-        };
-        _framebuffers.emplace_back(_device.make_framebuffer(fbci));
-    }
+    make_framebuffers();
 
     // synchronization creation
     vk::SemaphoreCreateInfo sci{};
@@ -156,18 +170,56 @@ void application_base::update_swapchain(std::uint32_t w, std::uint32_t h) {
 
     _swapchain.resize(_device, w, h);
 
+    make_depth_image();
+    make_framebuffers();
+}
+
+void application_base::make_framebuffers() {
     _framebuffers.clear();
     for (const auto& iv : _swapchain.image_views()) {
+        vk::ImageView views[] = {iv, _depth.view};
         vk::FramebufferCreateInfo fbci{
             {},
             _render_pass,
-            iv,
+            views,
             _swapchain.extent().width,
             _swapchain.extent().height,
             1,
         };
         _framebuffers.emplace_back(_device.make_framebuffer(fbci));
     }
+}
+
+void application_base::make_depth_image() {
+    vk::ImageCreateInfo ici{
+        {},
+        vk::ImageType::e2D,
+        vk::Format::eD32Sfloat,
+        vk::Extent3D{_swapchain.extent(), 1},
+        1,
+        1,
+        vk::SampleCountFlagBits::e1,
+        vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eDepthStencilAttachment,
+    };
+    _depth.image = _device.make_image(ici);
+
+    const auto req = _depth.image.getMemoryRequirements();
+    const auto index = _device.memory_type_index(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    vk::MemoryAllocateInfo mai{req.size, index};
+    _depth.memory = _device.make_memory(mai);
+    _depth.image.bindMemory(_depth.memory, 0);
+
+    vk::ImageViewCreateInfo ivci{
+        {},
+        _depth.image,
+        vk::ImageViewType::e2D,
+        vk::Format::eD32Sfloat,
+        {},
+        {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1},
+    };
+    _depth.view = _device.make_image_view(ivci);
 }
 
 bool application_base::loop_handler() const {
