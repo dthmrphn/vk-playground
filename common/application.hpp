@@ -2,7 +2,6 @@
 
 #include "vulkan.hpp"
 
-#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 namespace common {
@@ -49,8 +48,25 @@ class application_base {
 
     bool loop_handler() const;
 
+    void on_resize(std::uint32_t w, std::uint32_t h);
+
+    struct default_pipeline_info {
+        vk::PipelineInputAssemblyStateCreateInfo input_assembly_state;
+        vk::PipelineDepthStencilStateCreateInfo depth_state;
+        vk::PipelineViewportStateCreateInfo viewport_state;
+        vk::PipelineRasterizationStateCreateInfo rasterization_state;
+        vk::PipelineMultisampleStateCreateInfo multisample_state;
+        vk::ColorComponentFlags color_flags;
+        vk::PipelineColorBlendAttachmentState colorblend_attachment;
+        vk::PipelineColorBlendStateCreateInfo colorblend_state;
+        vk::DynamicState dynamic_states[2];
+        vk::PipelineDynamicStateCreateInfo dynamic_state;
+
+        default_pipeline_info();
+        operator vk::GraphicsPipelineCreateInfo() const;
+    };
+
   private:
-    static void resize_handler(GLFWwindow*, int, int);
     void update_swapchain(std::uint32_t w, std::uint32_t h);
     void make_framebuffers();
     void make_depth_image();
@@ -68,9 +84,38 @@ class application : public application_base {
         return static_cast<T&>(*this);
     }
 
+    static application& self(GLFWwindow* win) {
+        return *static_cast<application*>(glfwGetWindowUserPointer(win));
+    }
+
+    static void resize_handler(GLFWwindow* w, int width, int height) {
+        self(w).on_resize(width, height);
+    }
+
+    static void mouse_handler(GLFWwindow* w, double x, double y) {
+        self(w).impl().on_mouse(x, y);
+    }
+
+    static void keyboard_handler(GLFWwindow* w, int key, int scancode, int action, int mods) {
+        self(w).impl().on_keyboard(key, scancode, action, mods);
+    }
+
+    void render() {
+        static_assert(false, "T must implement render() method");
+    }
+
+    void on_mouse(double x, double y) {}
+
+    void on_keyboard(int key, int scancode, int action, int mods) {}
+
   public:
     application(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h)
-        : application_base(app_info, w, h) {}
+        : application_base(app_info, w, h) {
+        glfwSetWindowUserPointer(_window, this);
+        glfwSetFramebufferSizeCallback(_window, &application::resize_handler);
+        glfwSetCursorPosCallback(_window, &application::mouse_handler);
+        glfwSetKeyCallback(_window, &application::keyboard_handler);
+    }
 
     void run() {
         while (loop_handler()) {

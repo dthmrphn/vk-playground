@@ -1,6 +1,6 @@
+#define GLFW_INCLUDE_VULKAN
 #include "application.hpp"
 
-#include <GLFW/glfw3.h>
 #include <fmt/core.h>
 
 constexpr static const char* enabled_layers[] = {
@@ -17,8 +17,6 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     _window = glfwCreateWindow(w, h, app_info.pApplicationName, nullptr, nullptr);
-    glfwSetFramebufferSizeCallback(_window, &application_base::resize_handler);
-    glfwSetWindowUserPointer(_window, this);
 
     // device creation
     std::uint32_t count{};
@@ -160,9 +158,8 @@ void application_base::present(std::uint32_t index) {
     _current_frame = (_current_frame + 1) % frames_in_flight;
 }
 
-void application_base::resize_handler(GLFWwindow* win, int w, int h) {
-    auto app = static_cast<application_base*>(glfwGetWindowUserPointer(win));
-    app->update_swapchain(w, h);
+void application_base::on_resize(std::uint32_t w, std::uint32_t h) {
+    update_swapchain(w, h);
 }
 
 void application_base::update_swapchain(std::uint32_t w, std::uint32_t h) {
@@ -226,6 +223,68 @@ bool application_base::loop_handler() const {
     auto rv = !glfwWindowShouldClose(_window);
     glfwPollEvents();
     return rv;
+}
+
+application_base::default_pipeline_info::default_pipeline_info() {
+    input_assembly_state = {{}, vk::PrimitiveTopology::eTriangleList, vk::False};
+    depth_state = {{}, true, true, vk::CompareOp::eLess, false, false};
+    viewport_state = {{}, 1, nullptr, 1, nullptr};
+    rasterization_state = {
+        {},
+        vk::False,
+        vk::False,
+        vk::PolygonMode::eFill,
+        vk::CullModeFlagBits::eNone,
+        vk::FrontFace::eCounterClockwise,
+        vk::False,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+    };
+    multisample_state = {{}, vk::SampleCountFlagBits::e1, vk::False};
+    color_flags = {
+        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
+    };
+
+    colorblend_attachment = {
+        vk::True,
+        vk::BlendFactor::eSrcAlpha,
+        vk::BlendFactor::eOneMinusSrcAlpha,
+        vk::BlendOp::eAdd,
+        vk::BlendFactor::eZero,
+        vk::BlendFactor::eZero,
+        vk::BlendOp::eAdd,
+        color_flags,
+    };
+
+    colorblend_state = {
+        {},
+        vk::False,
+        vk::LogicOp::eCopy,
+        colorblend_attachment,
+        {0.0f, 0.0f, 0.0f, 0.0f},
+    };
+
+    dynamic_states[0] = vk::DynamicState::eViewport;
+    dynamic_states[1] = vk::DynamicState::eScissor;
+    dynamic_state = vk::PipelineDynamicStateCreateInfo{{}, dynamic_states};
+}
+
+application_base::default_pipeline_info::operator vk::GraphicsPipelineCreateInfo () const {
+    return vk::GraphicsPipelineCreateInfo{
+        {},
+        {},
+        nullptr,
+        &input_assembly_state,
+        nullptr,
+        &viewport_state,
+        &rasterization_state,
+        &multisample_state,
+        &depth_state,
+        &colorblend_state,
+        &dynamic_state,
+    };
 }
 
 } // namespace common

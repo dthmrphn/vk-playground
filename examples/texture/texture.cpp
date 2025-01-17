@@ -102,66 +102,15 @@ struct texture : public common::application<texture> {
         constexpr auto binding_desc = vertex::binding_desc();
         constexpr auto attribute_desc = vertex::attribute_desc();
         vk::PipelineVertexInputStateCreateInfo vertex_input_state{{}, binding_desc, attribute_desc};
-        vk::PipelineInputAssemblyStateCreateInfo input_assembly_state{{}, vk::PrimitiveTopology::eTriangleList, vk::False};
-        vk::PipelineDepthStencilStateCreateInfo depth_state{{}, true, true, vk::CompareOp::eLess, false, false};
-
-        vk::PipelineViewportStateCreateInfo viewport_state{{}, 1, nullptr, 1, nullptr};
-        vk::PipelineRasterizationStateCreateInfo rasterization_state{
-            {},
-            vk::False,
-            vk::False,
-            vk::PolygonMode::eFill,
-            vk::CullModeFlagBits::eNone,
-            vk::FrontFace::eCounterClockwise,
-            vk::False,
-            0.0f,
-            0.0f,
-            0.0f,
-            1.0f,
-        };
-        vk::PipelineMultisampleStateCreateInfo multisample_state{{}, vk::SampleCountFlagBits::e1, vk::False};
-        vk::ColorComponentFlags color_flags(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
-        vk::PipelineColorBlendAttachmentState colorblend_attachment{
-            vk::True,
-            vk::BlendFactor::eSrcAlpha,
-            vk::BlendFactor::eOneMinusSrcAlpha,
-            vk::BlendOp::eAdd,
-            vk::BlendFactor::eZero,
-            vk::BlendFactor::eZero,
-            vk::BlendOp::eAdd,
-            color_flags,
-        };
-
-        vk::PipelineColorBlendStateCreateInfo colorblend_state{
-            {},
-            vk::False,
-            vk::LogicOp::eCopy,
-            colorblend_attachment,
-            {0.0f, 0.0f, 0.0f, 0.0f},
-        };
-
-        vk::DynamicState dynamic_states[] = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-        vk::PipelineDynamicStateCreateInfo dynamic_state{{}, dynamic_states};
 
         vk::PipelineLayoutCreateInfo plci{{}, *_descriptor_layout};
         _pipeline_layout = _device.make_pipeline_layout(plci);
 
-        vk::GraphicsPipelineCreateInfo pci{
-            {},
-            shader_stages,
-            &vertex_input_state,
-            &input_assembly_state,
-            nullptr,
-            &viewport_state,
-            &rasterization_state,
-            &multisample_state,
-            &depth_state,
-            &colorblend_state,
-            &dynamic_state,
-            _pipeline_layout,
-            _render_pass,
-        };
-
+        vk::GraphicsPipelineCreateInfo pci = default_pipeline_info{};
+        pci.setStages(shader_stages)
+            .setPVertexInputState(&vertex_input_state)
+            .setLayout(_pipeline_layout)
+            .setRenderPass(_render_pass);
         _pipeline = _device.make_pipeline(pci);
     }
 
@@ -172,13 +121,13 @@ struct texture : public common::application<texture> {
             {{+0.5, +0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
             {{+0.5, -0.5, +0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
             {{-0.5, -0.5, +0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
-            
+
             // back
             {{-0.5, +0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
             {{+0.5, +0.5, -0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
             {{+0.5, -0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
             {{-0.5, -0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
-            
+
             // left
             {{-0.5, -0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
             {{-0.5, -0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
@@ -222,6 +171,7 @@ struct texture : public common::application<texture> {
     }
 
     void make_indices_buffer() {
+        // clang-format off
         std::array<std::uint32_t, 36> indicies = {
             0, 1, 2, 2, 3, 0, 
             4, 5, 6, 6, 7, 4,
@@ -230,6 +180,7 @@ struct texture : public common::application<texture> {
             16, 17, 18, 18, 19, 16,
             20, 21, 22, 22, 23, 20,
         };
+        // clang-format on
 
         constexpr auto size = sizeof(std::uint32_t) * indicies.size();
         vulkan::host_buffer staging{
