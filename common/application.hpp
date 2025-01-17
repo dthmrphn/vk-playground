@@ -3,10 +3,26 @@
 #include "vulkan.hpp"
 
 #include <GLFW/glfw3.h>
+#include <chrono>
 
 namespace common {
 
+class fps_counter {
+    std::chrono::system_clock::time_point _tp;
+    std::uint32_t _counter;
+    std::uint32_t _fps;
+
+  public:
+    fps_counter();
+    void count();
+    void reset();
+    std::uint32_t value() const;
+};
+
 class application_base {
+    fps_counter _counter;
+    std::string _name;
+
   protected:
     static constexpr auto frames_in_flight{2};
 
@@ -46,7 +62,7 @@ class application_base {
     std::uint32_t acquire();
     void present(std::uint32_t i);
 
-    bool loop_handler() const;
+    bool loop_handler();
 
     void on_resize(std::uint32_t w, std::uint32_t h);
 

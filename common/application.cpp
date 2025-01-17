@@ -12,7 +12,8 @@ constexpr static const char* device_extensions[] = {
 };
 
 namespace common {
-application_base::application_base(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h) {
+application_base::application_base(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h)
+    : _name(app_info.pApplicationName) {
     // glfw initialization
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -219,7 +220,13 @@ void application_base::make_depth_image() {
     _depth.view = _device.make_image_view(ivci);
 }
 
-bool application_base::loop_handler() const {
+bool application_base::loop_handler() {
+    _counter.count();
+    if (_counter.value()) {
+        glfwSetWindowTitle(_window, fmt::format("{} - {} fps", _name, _counter.value()).c_str());
+        _counter.reset();
+    }
+
     auto rv = !glfwWindowShouldClose(_window);
     glfwPollEvents();
     return rv;
@@ -271,7 +278,7 @@ application_base::default_pipeline_info::default_pipeline_info() {
     dynamic_state = vk::PipelineDynamicStateCreateInfo{{}, dynamic_states};
 }
 
-application_base::default_pipeline_info::operator vk::GraphicsPipelineCreateInfo () const {
+application_base::default_pipeline_info::operator vk::GraphicsPipelineCreateInfo() const {
     return vk::GraphicsPipelineCreateInfo{
         {},
         {},
@@ -285,6 +292,28 @@ application_base::default_pipeline_info::operator vk::GraphicsPipelineCreateInfo
         &colorblend_state,
         &dynamic_state,
     };
+}
+
+fps_counter::fps_counter() : _tp(std::chrono::system_clock::now()), _counter(0), _fps(0) {}
+
+void fps_counter::count() {
+    ++_counter;
+    const auto now = std::chrono::system_clock::now();
+    const auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(now - _tp).count();
+
+    if (dur > 1000.0f) {
+        _fps = _counter;
+        _tp = now;
+        _counter = 0;
+    }
+}
+
+void fps_counter::reset() {
+    _fps = 0;
+}
+
+std::uint32_t fps_counter::value() const {
+    return _fps;
 }
 
 } // namespace common
