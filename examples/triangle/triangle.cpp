@@ -146,9 +146,7 @@ struct triangle : public common::application<triangle> {
         _device.copy_buffers(staging.buf(), _indices_buffer.buf(), size);
     }
 
-    void render() {
-        auto i = acquire();
-
+    void record(std::uint32_t i) {
         const auto& cb = _frames[_current_frame].command_buffer;
 
         const float time = glfwGetTime();
@@ -178,8 +176,6 @@ struct triangle : public common::application<triangle> {
         cb.drawIndexed(3, 1, 0, 0, 0);
         cb.endRenderPass();
         cb.end();
-
-        present(i);
     }
 };
 

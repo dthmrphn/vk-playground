@@ -222,9 +222,7 @@ struct texture : public common::application<texture> {
         _device.copy_buffer_to_image(staging.buf(), _texture.image(), _texture.extent());
     }
 
-    void render() {
-        auto i = acquire();
-
+    void record(std::uint32_t i) {
         const auto& cb = _frames[_current_frame].command_buffer;
         const auto [w, h] = _swapchain.extent();
         const float time = glfwGetTime();
@@ -254,8 +252,6 @@ struct texture : public common::application<texture> {
         cb.drawIndexed(36, 1, 0, 0, 0);
         cb.endRenderPass();
         cb.end();
-
-        present(i);
     }
 };
 

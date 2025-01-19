@@ -116,13 +116,25 @@ class application : public application_base {
         self(w).impl().on_keyboard(key, scancode, action, mods);
     }
 
-    void render() {
-        static_assert(false, "T must implement render() method");
+    void record(std::uint32_t i) {
+        static_assert(false, "T must implement record(std::uint32_t) method");
     }
 
     void on_mouse(double x, double y) {}
 
     void on_keyboard(int key, int scancode, int action, int mods) {}
+
+    std::uint32_t acquire_impl() {
+        return impl().acquire();
+    }
+
+    void record_impl(std::uint32_t i) {
+        impl().record(i);
+    }
+
+    void present_impl(std::uint32_t i) {
+        impl().present(i);
+    }
 
   public:
     application(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h)
@@ -135,7 +147,9 @@ class application : public application_base {
 
     void run() {
         while (loop_handler()) {
-            impl().render();
+            const auto i = acquire_impl();
+            record_impl(i);
+            present_impl(i);
         }
 
         _device.logical().waitIdle();

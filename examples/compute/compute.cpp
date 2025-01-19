@@ -296,9 +296,7 @@ struct compute : public common::application<compute> {
         _current_frame = (_current_frame + 1) % frames_in_flight;
     }
 
-    void render() {
-        auto i = acquire();
-
+    void record(std::uint32_t i) {
         record_compute();
 
         const auto& cb = _frames[_current_frame].command_buffer;
@@ -330,8 +328,6 @@ struct compute : public common::application<compute> {
         cb.drawIndexed(6, 1, 0, 0, 0);
         cb.endRenderPass();
         cb.end();
-
-        present(i);
     }
 };
 
