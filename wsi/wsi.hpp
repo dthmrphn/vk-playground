@@ -5,46 +5,63 @@
 #include <memory>
 #include <string_view>
 
+#include <utility>
 #include <vulkan/vulkan_core.h>
 
 namespace wsi {
 
 namespace detail {
-struct non_copyable {
-    non_copyable() = default;
 
-    non_copyable(const non_copyable& other) = delete;
-    non_copyable& operator=(const non_copyable& other) = delete;
+template <typename T, std::size_t Size, std::size_t Alignment = sizeof(void*)>
+struct pimpl {
+    pimpl(const pimpl&) = delete;
+    pimpl& operator=(const pimpl&) = delete;
 
-    non_copyable(non_copyable&& other) = default;
-    non_copyable& operator=(non_copyable&& other) = default;
+    pimpl(pimpl&&) = default;
+    pimpl& operator=(pimpl&&) = default;
+
+    template <typename... Args>
+    pimpl(Args&&... args) {
+        new (ptr()) T(std::forward<Args>(args)...);
+    }
+
+    T& operator*() noexcept { return *ptr(); }
+    const T& operator*() const noexcept { return *ptr(); }
+
+    T* operator->() noexcept { return ptr(); }
+    const T* operator->() const noexcept { return ptr(); }
+    
+    ~pimpl() {
+        check<sizeof(T), alignof(T)>();
+        ptr()->~T();
+    }
+
+  private:
+    std::byte _storage[Size];
+
+    T* ptr() { return reinterpret_cast<T*>(&_storage[0]); }
+
+    template <std::size_t RealSize, std::size_t RealAlignment>
+    static void check() noexcept {
+        static_assert(RealSize == Size, "size mismatch");
+        static_assert(RealAlignment == Alignment, "alignment mismatch");
+    }
 };
-
-template <typename T>
-struct pimpl_helper {};
 
 } // namespace detail
 
-class window : public detail::non_copyable {
-    void handle_begin();
-    void handle_end();
-
-    struct impl;
-    std::unique_ptr<impl> impl;
-
+class window {
   public:
+    struct platform;
+
     window(std::size_t width, std::size_t height, std::string_view name);
 
     VkSurfaceKHR create_surface() const;
 
     static constexpr std::array<const char*, 2> required_extensions();
 
-    template <typename F>
-    void handle(F&& f) {
-        handle_begin();
-        f();
-        handle_end();
-    }
+  private:
+    detail::pimpl<platform, 96> _impl;
 };
 
 } // namespace wsi

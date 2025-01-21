@@ -17,6 +17,7 @@ find_package(glm REQUIRED)
 
 set(libraries common glfw glm::glm fmt::fmt Vulkan::Vulkan)
 
+add_subdirectory(wsi)
 add_subdirectory(common)
 add_subdirectory(examples/triangle)
 add_subdirectory(examples/texture)
