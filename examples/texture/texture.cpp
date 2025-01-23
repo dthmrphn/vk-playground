@@ -225,7 +225,8 @@ struct texture : public common::application<texture> {
     void record(std::uint32_t i) {
         const auto& cb = _frames[_current_frame].command_buffer;
         const auto [w, h] = _swapchain.extent();
-        const float time = glfwGetTime();
+        const auto time = current_time();
+
         uniform ubo{
             glm::rotate(glm::mat4(1.0f), time, glm::vec3(1.0f, 1.0f, 1.0f)),
             glm::lookAt(glm::vec3(1.0f, 2.0f, 4.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),

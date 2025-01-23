@@ -300,8 +300,8 @@ struct compute : public common::application<compute> {
         record_compute();
 
         const auto& cb = _frames[_current_frame].command_buffer;
+        const auto time = current_time();
 
-        const float time = glfwGetTime();
         uniform ubo{
             glm::rotate(glm::mat4(1.0f), time, glm::vec3(0.0f, 0.0f, 1.0f)),
             glm::mat4(1.0f),
