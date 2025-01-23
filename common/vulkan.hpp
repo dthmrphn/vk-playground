@@ -87,8 +87,8 @@ class buffer {
     buffer() = default;
     buffer(const device& dev, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask);
 
-    const vk::raii::Buffer& buf() const;
-    const vk::raii::DeviceMemory& mem() const;
+    const vk::Buffer& buf() const;
+    const vk::DeviceMemory& mem() const;
 };
 
 class device_buffer : public buffer {
@@ -141,11 +141,13 @@ class swapchain {
     swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h);
     void resize(const device& device, std::uint32_t w, std::uint32_t h);
 
-    const vk::raii::SwapchainKHR& get() const;
+    const vk::SwapchainKHR& get() const;
 
     vk::SurfaceFormatKHR format() const;
     vk::Extent2D extent() const;
     std::vector<vk::ImageView> image_views() const;
+
+    std::pair<vk::Result, std::uint32_t> acquire_next(std::uint64_t timeout, const vk::Semaphore& semaphore = {}, const vk::Fence& fence = {}) const;
 };
 
 } // namespace vulkan

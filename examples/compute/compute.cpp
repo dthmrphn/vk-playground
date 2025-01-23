@@ -287,7 +287,7 @@ struct compute : public common::application<compute> {
         };
         _graphic_queue.submit(submit, fence);
 
-        vk::PresentInfoKHR present_info{*render_finished_semaphore, *_swapchain.get(), index};
+        vk::PresentInfoKHR present_info{*render_finished_semaphore, _swapchain.get(), index};
         auto rv = _present_queue.presentKHR(present_info);
         if (rv != vk::Result::eSuccess) {
             fmt::print("present err: {}\n", vk::to_string(rv));
@@ -321,7 +321,7 @@ struct compute : public common::application<compute> {
         cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
         cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
         cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipeline_layout, 0, {_descriptor_set}, nullptr);
-        cb.bindVertexBuffers(0, *_verticies_buffer.buf(), {0});
+        cb.bindVertexBuffers(0, _verticies_buffer.buf(), {0});
         cb.bindIndexBuffer(_indices_buffer.buf(), 0, vk::IndexType::eUint32);
         cb.setViewport(0, viewport);
         cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});

@@ -169,7 +169,7 @@ struct triangle : public common::application<triangle> {
         cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
         cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
         cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipeline_layout, 0, {_descriptor_set}, nullptr);
-        cb.bindVertexBuffers(0, *_verticies_buffer.buf(), {0});
+        cb.bindVertexBuffers(0, _verticies_buffer.buf(), {0});
         cb.bindIndexBuffer(_indices_buffer.buf(), 0, vk::IndexType::eUint32);
         cb.setViewport(0, viewport);
         cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});

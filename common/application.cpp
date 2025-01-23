@@ -124,7 +124,7 @@ std::uint32_t application_base::acquire() {
     }
     _device.logical().resetFences(*fence);
 
-    auto [rv, index] = _swapchain.get().acquireNextImage(-1, semaphore);
+    auto [rv, index] = _swapchain.acquire_next(-1, semaphore);
     if (rv != vk::Result::eSuccess) {
         fmt::print("acquire err: {}\n", vk::to_string(rv));
     }
@@ -143,7 +143,7 @@ void application_base::present(std::uint32_t index) {
     };
     _graphic_queue.submit(submit, fence);
 
-    vk::PresentInfoKHR present_info{*render_finished_semaphore, *_swapchain.get(), index};
+    vk::PresentInfoKHR present_info{*render_finished_semaphore, _swapchain.get(), index};
     auto rv = _present_queue.presentKHR(present_info);
     if (rv != vk::Result::eSuccess) {
         fmt::print("present err: {}\n", vk::to_string(rv));

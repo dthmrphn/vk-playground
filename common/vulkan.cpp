@@ -329,12 +329,12 @@ buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags u
     _buf.bindMemory(_mem, 0);
 }
 
-const vk::raii::Buffer& buffer::buf() const {
-    return _buf;
+const vk::Buffer& buffer::buf() const {
+    return *_buf;
 }
 
-const vk::raii::DeviceMemory& buffer::mem() const {
-    return _mem;
+const vk::DeviceMemory& buffer::mem() const {
+    return *_mem;
 }
 
 device_buffer::device_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage)
@@ -482,8 +482,8 @@ void swapchain::resize(const device& device, std::uint32_t w, std::uint32_t h) {
     }
 }
 
-const vk::raii::SwapchainKHR& swapchain::get() const {
-    return _swapchain;
+const vk::SwapchainKHR& swapchain::get() const {
+    return *_swapchain;
 }
 
 vk::SurfaceFormatKHR swapchain::format() const {
@@ -500,6 +500,10 @@ std::vector<vk::ImageView> swapchain::image_views() const {
         views.push_back(*iv);
     }
     return views;
+}
+
+std::pair<vk::Result, std::uint32_t> swapchain::acquire_next(std::uint64_t timeout, const vk::Semaphore& semaphore, const vk::Fence& fence) const {
+    return _swapchain.acquireNextImage(timeout, semaphore, fence);
 }
 
 } // namespace vulkan
