@@ -1,4 +1,3 @@
-#define GLFW_INCLUDE_VULKAN
 #include "application.hpp"
 
 #include <fmt/core.h>
@@ -13,16 +12,9 @@ constexpr static const char* device_extensions[] = {
 
 namespace common {
 application_base::application_base(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h)
-    : _name(app_info.pApplicationName) {
-    // glfw initialization
-    glfwInit();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    _window = glfwCreateWindow(w, h, app_info.pApplicationName, nullptr, nullptr);
-
+    : _name(app_info.pApplicationName), _window(w, h, _name) {
     // device creation
-    std::uint32_t count{};
-    const auto exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> extensions{exts, exts + count};
+    auto extensions = wsi::window::required_extensions();
     extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     _device = vulkan::device{
@@ -41,8 +33,7 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     _present_queue = _device.graphic_queue();
 
     // swapchain creation
-    VkSurfaceKHR surf{};
-    glfwCreateWindowSurface(_device.instance(), _window, nullptr, &surf);
+    VkSurfaceKHR surf = _window.create_surface(_device.instance());
     _swapchain = vulkan::swapchain{_device, surf, w, h};
 
     // command pool and buffer creation
@@ -122,6 +113,8 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
         _frames[i].render_finished_semaphore = _device.make_semaphore(sci);
         _frames[i].fence = _device.make_fence(fci);
     }
+
+    _tp = std::chrono::system_clock::now();
 }
 
 std::uint32_t application_base::acquire() {
@@ -223,13 +216,11 @@ void application_base::make_depth_image() {
 bool application_base::loop_handler() {
     _counter.count();
     if (_counter.value()) {
-        glfwSetWindowTitle(_window, fmt::format("{} - {} fps", _name, _counter.value()).c_str());
+        _window.set_title(fmt::format("{} - {} fps", _name, _counter.value()));
         _counter.reset();
     }
-
-    auto rv = !glfwWindowShouldClose(_window);
-    glfwPollEvents();
-    return rv;
+    
+    return _window.handle();
 }
 
 application_base::default_pipeline_info::default_pipeline_info() {
@@ -314,6 +305,11 @@ void fps_counter::reset() {
 
 std::uint32_t fps_counter::value() const {
     return _fps;
+}
+
+float application_base::current_time() const {
+    const auto now = std::chrono::system_clock::now();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now - _tp).count() / 1000.0f;
 }
 
 } // namespace common

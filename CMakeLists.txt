@@ -11,11 +11,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(spirv_library)
 
 find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
-find_package(glfw3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 
-set(libraries common glfw glm::glm fmt::fmt Vulkan::Vulkan)
+option(USE_WAYLAND_WSI "use native wayland wsi backend" OFF)
+
+set(libraries common glm::glm fmt::fmt Vulkan::Vulkan)
 
 add_subdirectory(wsi)
 add_subdirectory(common)

@@ -2,8 +2,8 @@
 
 #include "vulkan.hpp"
 
-#include <GLFW/glfw3.h>
 #include <chrono>
+#include <wsi.hpp>
 
 namespace common {
 
@@ -23,10 +23,14 @@ class application_base {
     fps_counter _counter;
     std::string _name;
 
+    std::chrono::system_clock::time_point _tp;
+
   protected:
     static constexpr auto frames_in_flight{2};
 
     std::size_t _current_frame{};
+
+    wsi::window _window;
 
     vulkan::device _device;
     vulkan::swapchain _swapchain;
@@ -57,8 +61,6 @@ class application_base {
         vk::raii::DeviceMemory memory{nullptr};
     } _depth;
 
-    GLFWwindow* _window;
-
     std::uint32_t acquire();
     void present(std::uint32_t i);
 
@@ -82,6 +84,8 @@ class application_base {
         operator vk::GraphicsPipelineCreateInfo() const;
     };
 
+    float current_time() const;
+
   private:
     void update_swapchain(std::uint32_t w, std::uint32_t h);
     void make_framebuffers();
@@ -100,26 +104,6 @@ class application : public application_base {
         return static_cast<T&>(*this);
     }
 
-    static application& self(GLFWwindow* win) {
-        return *static_cast<application*>(glfwGetWindowUserPointer(win));
-    }
-
-    static void resize_handler(GLFWwindow* w, int width, int height) {
-        self(w).on_resize(width, height);
-    }
-
-    static void mouse_handler(GLFWwindow* w, double x, double y) {
-        self(w).impl().on_mouse(x, y);
-    }
-
-    static void keyboard_handler(GLFWwindow* w, int key, int scancode, int action, int mods) {
-        self(w).impl().on_keyboard(key, scancode, action, mods);
-    }
-
-    void record(std::uint32_t i) {
-        static_assert(false, "T must implement record(std::uint32_t) method");
-    }
-
     void on_mouse(double x, double y) {}
 
     void on_keyboard(int key, int scancode, int action, int mods) {}
@@ -136,17 +120,28 @@ class application : public application_base {
         impl().present(i);
     }
 
+    template <class... Ts>
+    struct overloaded : Ts... {
+        using Ts::operator()...;
+    };
+
+    template <class... Ts>
+    overloaded(Ts...) -> overloaded<Ts...>;
+
   public:
     application(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h)
         : application_base(app_info, w, h) {
-        glfwSetWindowUserPointer(_window, this);
-        glfwSetFramebufferSizeCallback(_window, &application::resize_handler);
-        glfwSetCursorPosCallback(_window, &application::mouse_handler);
-        glfwSetKeyCallback(_window, &application::keyboard_handler);
     }
 
     void run() {
+        const auto visitor = overloaded{
+            [this](wsi::event::resize e) { application_base::on_resize(e.w, e.h); },
+            [this](auto&& e) {},
+        };
+
         while (loop_handler()) {
+            std::visit(visitor, _window.handle_event());
+
             const auto i = acquire_impl();
             record_impl(i);
             present_impl(i);
