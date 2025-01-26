@@ -2,6 +2,7 @@
 
 #include <fmt/format.h>
 
+#include <linux/input-event-codes.h>
 #include <vulkan/vulkan_wayland.h>
 
 #include "xdg-shell.h"
@@ -234,9 +235,30 @@ void enter(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surf
 
 void leave(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surface) {}
 
-void motion(void* data, wl_pointer* wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {}
+void motion(void* data, wl_pointer* wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
+    auto self = static_cast<platform*>(data);
+    const float x = wl_fixed_to_double(surface_x);
+    const float y = wl_fixed_to_double(surface_y);
+    self->events.push(event::mouse::position{x, y});
+}
 
-void button(void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {}
+void button(void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
+    auto self = static_cast<platform*>(data);
+    event::mouse::button ev{};
+    switch (button) {
+    case BTN_LEFT:
+        ev.lmb = (bool)state;
+        break;
+    case BTN_RIGHT:
+        ev.rmb = (bool)state;
+        break;
+    case BTN_MIDDLE:
+        ev.mmb = (bool)state;
+        break;
+    }
+
+    self->events.push(ev);
+}
 
 void axis(void* data, wl_pointer* wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value) {}
 

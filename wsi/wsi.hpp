@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <memory>
 #include <variant>
 #include <vector>
@@ -11,18 +10,29 @@ namespace wsi {
 
 namespace event {
 
-struct mouse {};
+struct mouse {
+    struct position {
+        float x;
+        float y;
+    };
+
+    struct button {
+        bool lmb;
+        bool rmb;
+        bool mmb;
+    };
+};
 
 struct keyboard {};
 
 struct resize {
-    std::int32_t w;
-    std::int32_t h;
+    int32_t w;
+    int32_t h;
 };
 
 } // namespace event
 
-using event_type = std::variant<event::mouse, event::keyboard, event::resize>;
+using event_type = std::variant<std::monostate, event::mouse::button, event::mouse::position, event::keyboard, event::resize>;
 
 struct platform;
 
@@ -36,7 +46,7 @@ class window {
 
     bool handle() const;
     event_type handle_event();
-    
+
     void set_title(const std::string& name);
 
   private:
