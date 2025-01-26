@@ -152,8 +152,9 @@ void application_base::present(std::uint32_t index) {
     _current_frame = (_current_frame + 1) % frames_in_flight;
 }
 
-void application_base::on_resize(std::uint32_t w, std::uint32_t h) {
-    update_swapchain(w, h);
+void application_base::on_resize(const wsi::event::resize& e) {
+    fmt::print("resize({} {})\n", e.w, e.h);
+    update_swapchain(e.w, e.h);
 }
 
 void application_base::update_swapchain(std::uint32_t w, std::uint32_t h) {

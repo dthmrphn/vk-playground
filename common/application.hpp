@@ -3,6 +3,7 @@
 #include "vulkan.hpp"
 
 #include <chrono>
+#include <fmt/base.h>
 #include <wsi.hpp>
 
 namespace common {
@@ -66,7 +67,7 @@ class application_base {
 
     bool loop_handler();
 
-    void on_resize(std::uint32_t w, std::uint32_t h);
+    void on_resize(const wsi::event::resize& e);
 
     struct default_pipeline_info {
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_state;
@@ -104,9 +105,9 @@ class application : public application_base {
         return static_cast<T&>(*this);
     }
 
-    void on_mouse(double x, double y) {}
+    void on_mouse_position(const wsi::event::mouse::position& e) {}
 
-    void on_keyboard(int key, int scancode, int action, int mods) {}
+    void on_mouse_button(const wsi::event::mouse::button& e) {}
 
     std::uint32_t acquire_impl() {
         return impl().acquire();
@@ -135,7 +136,9 @@ class application : public application_base {
 
     void run() {
         const auto visitor = overloaded{
-            [this](wsi::event::resize e) { application_base::on_resize(e.w, e.h); },
+            [this](wsi::event::resize e) { application_base::on_resize(e); },
+            [this](wsi::event::mouse::position e) { impl().on_mouse_position(e); },
+            [this](wsi::event::mouse::button e) { impl().on_mouse_button(e); },
             [this](auto&& e) {},
         };
 

@@ -16,10 +16,12 @@ find_package(glm REQUIRED)
 
 option(USE_WAYLAND_WSI "use native wayland wsi backend" OFF)
 
-set(libraries common glm::glm fmt::fmt Vulkan::Vulkan)
+set(libraries common glm::glm fmt::fmt Vulkan::Vulkan stblib)
 
+add_subdirectory(3rdparty)
 add_subdirectory(wsi)
 add_subdirectory(common)
 add_subdirectory(examples/triangle)
 add_subdirectory(examples/texture)
 add_subdirectory(examples/compute)
+add_subdirectory(examples/imgui)
