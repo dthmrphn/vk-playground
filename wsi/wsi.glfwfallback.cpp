@@ -19,7 +19,8 @@ struct platform {
 
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, &platform::resize_handler);
-        glfwSetCursorPosCallback(window, &platform::mouse_handler);
+        glfwSetCursorPosCallback(window, &platform::mouse_pos_handler);
+        glfwSetMouseButtonCallback(window, &platform::mouse_btn_handler);
         glfwSetKeyCallback(window, &platform::keyboard_handler);
     }
 
@@ -31,7 +32,27 @@ struct platform {
         self(w).events.push(event::resize{width, height});
     }
 
-    static void mouse_handler(GLFWwindow* w, double x, double y) {}
+    static void mouse_pos_handler(GLFWwindow* w, double x, double y) {
+        const float fx = x;
+        const float fy = y;
+        self(w).events.push(event::mouse::position{fx, fy});
+    }
+
+    static void mouse_btn_handler(GLFWwindow* w, int button, int action, int mods) {
+        event::mouse::button ev;
+        switch (button) {
+        case GLFW_MOUSE_BUTTON_RIGHT:
+            ev.rmb = action;
+            break;
+        case GLFW_MOUSE_BUTTON_LEFT:
+            ev.lmb = action;
+            break;
+        case GLFW_MOUSE_BUTTON_MIDDLE:
+            ev.mmb = action;
+            break;
+        }
+        self(w).events.push(ev);
+    }
 
     static void keyboard_handler(GLFWwindow* w, int key, int scancode, int action, int mods) {}
 };

@@ -3,7 +3,6 @@
 #include "vulkan.hpp"
 
 #include <chrono>
-#include <fmt/base.h>
 #include <wsi.hpp>
 
 namespace common {
