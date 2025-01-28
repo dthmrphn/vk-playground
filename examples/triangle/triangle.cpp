@@ -174,6 +174,9 @@ struct triangle : public common::application<triangle> {
         cb.setViewport(0, viewport);
         cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
         cb.drawIndexed(3, 1, 0, 0, 0);
+
+        _overlay.draw(*cb);
+
         cb.endRenderPass();
         cb.end();
     }

@@ -115,6 +115,27 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     }
 
     _tp = std::chrono::system_clock::now();
+
+    // overlay creation
+    vk::DescriptorPoolSize sizes[] = {
+        {vk::DescriptorType::eCombinedImageSampler, 1},
+    };
+
+    vk::DescriptorPoolCreateInfo dpci{vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 1, sizes};
+    _overlay_desc_pool = _device.make_descriptor_pool(dpci);
+
+    overlay::create_info oci{};
+    oci.instance = _device.instance();
+    oci.physical = _device.physical();
+    oci.logical = _device.logical();
+    oci.queue_index = _graphic_queue_index;
+    oci.queue = _graphic_queue;
+    oci.pool = *_overlay_desc_pool;
+    oci.render_pass = *_render_pass;
+    oci.img_count_min = _swapchain.image_views().size();
+    oci.img_count = oci.img_count_min + 1;
+       
+    _overlay = overlay{oci, w, h};
 }
 
 std::uint32_t application_base::acquire() {
@@ -153,8 +174,16 @@ void application_base::present(std::uint32_t index) {
 }
 
 void application_base::on_resize(const wsi::event::resize& e) {
-    fmt::print("resize({} {})\n", e.w, e.h);
     update_swapchain(e.w, e.h);
+    _overlay.resize(e.w, e.h);
+}
+
+void application_base::on_mouse_position(const wsi::event::mouse::position& e) {
+    _overlay.on_mouse_position(e.x, e.y);
+}
+
+void application_base::on_mouse_button(const wsi::event::mouse::button& e) {
+    _overlay.on_mouse_buttons(e.rmb, e.lmb, e.mmb);
 }
 
 void application_base::update_swapchain(std::uint32_t w, std::uint32_t h) {
@@ -220,7 +249,7 @@ bool application_base::loop_handler() {
         _window.set_title(fmt::format("{} - {} fps", _name, _counter.value()));
         _counter.reset();
     }
-    
+
     return _window.handle();
 }
 

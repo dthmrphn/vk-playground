@@ -1,5 +1,6 @@
 #pragma once
 
+#include "overlay.hpp"
 #include "vulkan.hpp"
 
 #include <chrono>
@@ -35,6 +36,9 @@ class application_base {
     vulkan::device _device;
     vulkan::swapchain _swapchain;
 
+    vk::raii::DescriptorPool _overlay_desc_pool{nullptr};
+    overlay _overlay;
+
     std::uint32_t _graphic_queue_index{};
     std::uint32_t _present_queue_index{};
 
@@ -67,6 +71,8 @@ class application_base {
     bool loop_handler();
 
     void on_resize(const wsi::event::resize& e);
+    void on_mouse_position(const wsi::event::mouse::position& e);
+    void on_mouse_button(const wsi::event::mouse::button& e);
 
     struct default_pipeline_info {
         vk::PipelineInputAssemblyStateCreateInfo input_assembly_state;
@@ -136,8 +142,14 @@ class application : public application_base {
     void run() {
         const auto visitor = overloaded{
             [this](wsi::event::resize e) { application_base::on_resize(e); },
-            [this](wsi::event::mouse::position e) { impl().on_mouse_position(e); },
-            [this](wsi::event::mouse::button e) { impl().on_mouse_button(e); },
+            [this](wsi::event::mouse::position e) {
+                application_base::on_mouse_position(e);
+                impl().on_mouse_position(e);
+            },
+            [this](wsi::event::mouse::button e) {
+                application_base::on_mouse_button(e);
+                impl().on_mouse_button(e);
+            },
             [this](auto&& e) {},
         };
 
@@ -150,6 +162,7 @@ class application : public application_base {
         }
 
         _device.logical().waitIdle();
+        _overlay.release();
     }
 };
 
