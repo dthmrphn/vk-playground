@@ -46,6 +46,9 @@ struct compute : public common::application<compute> {
 
     vk::raii::Semaphore _graphic_semaphore{nullptr};
 
+    std::string _device_name;
+    std::string _queue_info;
+
     struct {
         vk::Queue queue{nullptr};
         vk::raii::DescriptorSetLayout descriptor_layout{nullptr};
@@ -61,6 +64,8 @@ struct compute : public common::application<compute> {
         make_vertex_buffer();
         make_indices_buffer();
         make_input_image();
+
+        get_device_info();
 
         vk::DescriptorSetLayoutBinding bindings[] = {
             vulkan::texture::layout_binding(0),
@@ -113,6 +118,20 @@ struct compute : public common::application<compute> {
         _graphic_queue.waitIdle();
 
         make_compute_context();
+    }
+
+    void get_device_info() {
+        {
+            const auto props = _device.physical().getProperties();
+            const auto major = VK_API_VERSION_MAJOR(props.apiVersion);
+            const auto minor = VK_API_VERSION_MINOR(props.apiVersion);
+            const auto patch = VK_API_VERSION_PATCH(props.apiVersion);
+            _device_name = fmt::format("gpu: {} api: {}.{}.{}", props.deviceName.data(), major, minor, patch);
+        }
+        {
+            const auto props = _device.physical().getQueueFamilyProperties()[_graphic_queue_index];
+            _queue_info = fmt::format("queue: {}", vk::to_string(props.queueFlags));
+        }
     }
 
     void make_vertex_buffer() {
@@ -296,6 +315,12 @@ struct compute : public common::application<compute> {
         cb.setViewport(0, viewport);
         cb.setScissor(0, vk::Rect2D{{0, 0}, _swapchain.extent()});
         cb.drawIndexed(6, 1, 0, 0, 0);
+        
+        _overlay.begin();
+        _overlay.text(_device_name);
+        _overlay.text(_queue_info);
+        _overlay.draw(*cb);
+
         cb.endRenderPass();
         cb.end();
     }
