@@ -82,6 +82,7 @@ class buffer {
   protected:
     vk::raii::Buffer _buf{nullptr};
     vk::raii::DeviceMemory _mem{nullptr};
+    vk::DeviceSize _size;
 
   public:
     buffer() = default;
@@ -89,6 +90,7 @@ class buffer {
 
     const vk::Buffer& buf() const;
     const vk::DeviceMemory& mem() const;
+    const vk::DeviceSize size() const;
 };
 
 class device_buffer : public buffer {
@@ -104,7 +106,8 @@ class host_buffer : public buffer {
     host_buffer() = default;
     host_buffer(const device& dev, vk::DeviceSize size, vk::BufferUsageFlags usage, void* data = nullptr);
 
-    void copy(void* data, vk::DeviceSize size) const;
+    void copy(const void* data, vk::DeviceSize size) const;
+    void copy_to(void* data, vk::DeviceSize size) const;
 };
 
 class texture {
@@ -113,6 +116,8 @@ class texture {
     vk::raii::DeviceMemory _mem{nullptr};
     vk::raii::Sampler _sampler{nullptr};
     vk::Extent3D _extent{};
+    std::uint32_t _width;
+    std::uint32_t _height;
 
   public:
     texture() = default;
@@ -127,6 +132,8 @@ class texture {
     const vk::ImageView& view() const;
     const vk::Sampler& sampler() const;
     const vk::Extent3D extent() const;
+    std::uint32_t width() const;
+    std::uint32_t height() const;
 };
 
 class swapchain {

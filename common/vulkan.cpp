@@ -317,7 +317,7 @@ void device::image_transition(const vk::CommandBuffer& cb, const vk::Image& img,
     cb.pipelineBarrier(src_stage, dst_stage, {}, {}, {}, barrier);
 }
 
-buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) {
+buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) : _size(size) {
     vk::BufferCreateInfo ci{{}, size, usage, vk::SharingMode::eExclusive};
     _buf = device.make_buffer(ci);
 
@@ -337,6 +337,10 @@ const vk::DeviceMemory& buffer::mem() const {
     return *_mem;
 }
 
+const vk::DeviceSize buffer::size() const {
+    return _size;
+}
+
 device_buffer::device_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage)
     : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eDeviceLocal) {}
 
@@ -349,15 +353,19 @@ host_buffer::host_buffer(const device& device, vk::DeviceSize size, vk::BufferUs
     }
 }
 
-void host_buffer::copy(void* data, vk::DeviceSize size) const {
+void host_buffer::copy(const void* data, vk::DeviceSize size) const {
     std::memcpy(_mapped, data, size);
+}
+
+void host_buffer::copy_to(void* data, vk::DeviceSize size) const {
+    std::memcpy(data, _mapped, size);
 }
 
 texture::texture(const device& device, std::uint32_t width, std::uint32_t height)
     : texture(device, width, height, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst) {}
 
 texture::texture(const device& device, std::uint32_t width, std::uint32_t height, vk::ImageUsageFlags usage)
-    : _extent(width, height, 1) {
+    : _extent(width, height, 1), _width(width), _height(height) {
     vk::ImageCreateInfo ici{
         {},
         vk::ImageType::e2D,
@@ -413,6 +421,14 @@ const vk::Sampler& texture::sampler() const {
 
 const vk::Extent3D texture::extent() const {
     return _extent;
+}
+
+std::uint32_t texture::width() const {
+    return _width;
+}
+
+std::uint32_t texture::height() const {
+    return _height;
 }
 
 swapchain::swapchain(const device& device, const vk::SurfaceKHR& surf, std::uint32_t w, std::uint32_t h) {
