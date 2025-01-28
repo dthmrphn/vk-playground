@@ -5,6 +5,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 #include <headless.comp.hpp>
 
 constexpr static const char* layers[] = {
@@ -29,6 +32,8 @@ struct headless {
     vulkan::device _device;
     vulkan::texture _input_texture;
     vulkan::texture _output_texture;
+
+    vk::DeviceSize _buffer_size;
 
     vk::raii::DescriptorPool _descriptor_pool{nullptr};
 
@@ -87,6 +92,7 @@ struct headless {
             vk::BufferUsageFlagBits::eTransferSrc,
         };
         staging.copy(data, size);
+        _buffer_size = size;
 
         _input_texture = {
             _device,
@@ -103,7 +109,7 @@ struct headless {
             _device,
             width,
             height,
-            vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
+            vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage,
         };
 
         _device.image_transition(_output_texture.image(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
@@ -151,28 +157,49 @@ struct headless {
     }
 
     void record_compute() {
-        _compute.queue.waitIdle();
-
         _compute.command_buffer.begin({});
         _compute.command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, _compute.pipeline);
         _compute.command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, _compute.pipeline_layout, 0, *_compute.descriptor_set, nullptr);
         _compute.command_buffer.dispatch(_input_texture.extent().width / local_size, _input_texture.extent().height / local_size, 1);
-        _compute.command_buffer.end();
 
-        vk::PipelineStageFlags wait_flags{vk::PipelineStageFlagBits::eComputeShader};
+        vulkan::host_buffer staging{
+            _device,
+            _buffer_size,
+            vk::BufferUsageFlagBits::eTransferDst,
+        };
+
+        vk::BufferImageCopy bic{
+            0,
+            0,
+            0,
+            {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+            {0, 0, 0},
+            _output_texture.extent(),
+        };
+        _compute.command_buffer.copyImageToBuffer(_output_texture.image(), vk::ImageLayout::eGeneral, staging.buf(), bic);
+        _compute.command_buffer.end();
 
         vk::SubmitInfo info{
             nullptr,
-            wait_flags,
+            {},
             *_compute.command_buffer,
         };
         _compute.queue.submit(info);
+        _compute.queue.waitIdle();
+
+        std::vector<std::uint8_t> image_bytes(_buffer_size);
+        staging.copy_to(image_bytes.data(), _buffer_size);
+        int w = _output_texture.width();
+        int h = _output_texture.height();
+        stbi_write_jpg("headless.jpg", w, h, 4, image_bytes.data(), 90);
     }
 };
 
 int main() {
     try {
         headless headless{};
+
+        headless.record_compute();
 
     } catch (const std::exception& ex) {
         fmt::print("error: {}\n", ex.what());
