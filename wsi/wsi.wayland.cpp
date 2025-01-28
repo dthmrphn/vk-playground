@@ -110,7 +110,12 @@ static void motion(void* data, wl_pointer* wl_pointer, uint32_t time, wl_fixed_t
 static void button(void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state);
 static void axis(void* data, wl_pointer* wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value);
 static void frame(void* data, wl_pointer* wl_pointer);
-static constexpr wl_pointer_listener listener = {enter, leave, motion, button, axis, frame};
+static void axis_source(void* data, struct wl_pointer* wl_pointer, uint32_t axis_source);
+static void axis_stop(void* data, struct wl_pointer* wl_pointer, uint32_t time, uint32_t axis);
+static void axis_discrete(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t discrete);
+static void axis_value120(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t value120);
+static void axis_relative_direction(void* data, struct wl_pointer* wl_pointer, uint32_t axis, uint32_t direction);
+static constexpr wl_pointer_listener listener = {enter, leave, motion, button, axis, frame, axis_source, axis_stop, axis_discrete, axis_value120, axis_relative_direction};
 
 } // namespace pointer
 
@@ -261,8 +266,12 @@ void button(void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, 
 }
 
 void axis(void* data, wl_pointer* wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value) {}
-
 void frame(void* data, wl_pointer* wl_pointer) {}
+void axis_source(void* data, struct wl_pointer* wl_pointer, uint32_t axis_source) {}
+void axis_stop(void* data, struct wl_pointer* wl_pointer, uint32_t time, uint32_t axis) {}
+void axis_discrete(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t discrete) {}
+void axis_value120(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t value120) {}
+void axis_relative_direction(void* data, struct wl_pointer* wl_pointer, uint32_t axis, uint32_t direction) {}
 
 } // namespace pointer
 
