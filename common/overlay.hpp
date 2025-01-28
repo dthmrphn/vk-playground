@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string_view>
 #include <vulkan/vulkan.h>
 
 namespace common {
@@ -24,8 +25,12 @@ class overlay {
     void resize(uint32_t w, uint32_t h);
     void on_mouse_position(float x, float y);
     void on_mouse_buttons(bool right, bool left, bool middle);
+    
+    void begin() const;
+    void draw(VkCommandBuffer cb) const;
 
-    void draw(VkCommandBuffer cb);
+    bool button(std::string_view name) const;
+    void text(std::string_view text) const;
 };
 
 } // namespace common

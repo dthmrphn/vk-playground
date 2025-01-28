@@ -49,21 +49,27 @@ void overlay::on_mouse_buttons(bool right, bool left, bool middle) {
     io.AddMouseButtonEvent(2, middle);
 }
 
-void overlay::draw(VkCommandBuffer cb) {
+void overlay::begin() const {
     ImGui_ImplVulkan_NewFrame();
     ImGui::NewFrame();
-    
-    ImGui::ShowDemoWindow();
 
-    //ImGui::Begin("Overlay", nullptr);
-    //ImGui::Text("This is some useful text.");
-    //ImGui::Button("Some button");
-    //ImGui::End();
+    ImGui::Begin("Overlay", nullptr);
+}
 
+void overlay::draw(VkCommandBuffer cb) const {
+    ImGui::End();
     ImGui::Render();
-    ImDrawData* draw_data = ImGui::GetDrawData();
 
+    ImDrawData* draw_data = ImGui::GetDrawData();
     ImGui_ImplVulkan_RenderDrawData(draw_data, cb);
+}
+
+bool overlay::button(std::string_view name) const {
+    return ImGui::Button(name.data());
+}
+
+void overlay::text(std::string_view text) const {
+    ImGui::Text("%s", text.data());
 }
 
 } // namespace common
