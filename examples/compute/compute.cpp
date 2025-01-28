@@ -15,29 +15,17 @@
 
 struct vertex {
     glm::vec2 pos;
-    glm::vec3 color;
     glm::vec2 coord;
 
     static constexpr vk::VertexInputBindingDescription binding_desc() {
         return {0, sizeof(vertex), vk::VertexInputRate::eVertex};
     }
 
-    static constexpr std::array<vk::VertexInputAttributeDescription, 3> attribute_desc() {
+    static constexpr std::array<vk::VertexInputAttributeDescription, 2> attribute_desc() {
         return {
             vk::VertexInputAttributeDescription{0, 0, vk::Format::eR32G32Sfloat, offsetof(vertex, pos)},
-            vk::VertexInputAttributeDescription{1, 0, vk::Format::eR32G32B32Sfloat, offsetof(vertex, color)},
-            vk::VertexInputAttributeDescription{2, 0, vk::Format::eR32G32Sfloat, offsetof(vertex, coord)},
+            vk::VertexInputAttributeDescription{1, 0, vk::Format::eR32G32Sfloat, offsetof(vertex, coord)},
         };
-    }
-};
-
-struct uniform {
-    glm::mat4 m;
-    glm::mat4 v;
-    glm::mat4 p;
-
-    static constexpr vk::DescriptorSetLayoutBinding layout_binding() {
-        return {0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex};
     }
 };
 
@@ -49,7 +37,6 @@ struct compute : public common::application<compute> {
 
     vulkan::device_buffer _verticies_buffer;
     vulkan::device_buffer _indices_buffer;
-    vulkan::host_buffer _uniform_buffer;
     vulkan::texture _input_texture;
     vulkan::texture _output_texture;
 
@@ -75,22 +62,14 @@ struct compute : public common::application<compute> {
         make_indices_buffer();
         make_input_image();
 
-        _uniform_buffer = {
-            _device,
-            sizeof(uniform),
-            vk::BufferUsageFlagBits::eUniformBuffer,
-        };
-
         vk::DescriptorSetLayoutBinding bindings[] = {
-            uniform::layout_binding(),
-            vulkan::texture::layout_binding(1),
+            vulkan::texture::layout_binding(0),
         };
 
         vk::DescriptorSetLayoutCreateInfo dslci{{}, bindings};
         _descriptor_layout = _device.make_descriptor_set_layout(dslci);
 
         vk::DescriptorPoolSize sizes[] = {
-            {vk::DescriptorType::eUniformBuffer, 1},
             {vk::DescriptorType::eCombinedImageSampler, 1},
             {vk::DescriptorType::eStorageImage, 2},
         };
@@ -101,11 +80,9 @@ struct compute : public common::application<compute> {
         vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_descriptor_layout};
         _descriptor_set = std::move(_device.make_descriptor_sets(dsai).front());
 
-        vk::DescriptorBufferInfo dbi{_uniform_buffer.buf(), 0, sizeof(uniform)};
         vk::DescriptorImageInfo dii{_output_texture.sampler(), _output_texture.view(), vk::ImageLayout::eGeneral};
         vk::WriteDescriptorSet wdss[] = {
-            {_descriptor_set, 0, 0, vk::DescriptorType::eUniformBuffer, {}, dbi},
-            {_descriptor_set, 1, 0, vk::DescriptorType::eCombinedImageSampler, dii},
+            {_descriptor_set, 0, 0, vk::DescriptorType::eCombinedImageSampler, dii},
         };
         _device.logical().updateDescriptorSets(wdss, nullptr);
 
@@ -140,10 +117,10 @@ struct compute : public common::application<compute> {
 
     void make_vertex_buffer() {
         std::array<vertex, 4> verticies = {{
-            {{-0.5, +0.5}, {1.0, 0.0, 0.0}, {0.0, 1.0}},
-            {{+0.5, +0.5}, {0.0, 1.0, 0.0}, {1.0, 1.0}},
-            {{+0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 0.0}},
-            {{-0.5, -0.5}, {0.5, 0.5, 0.5}, {0.0, 0.0}},
+            {{-1.0, +1.0}, {0.0, 1.0}},
+            {{+1.0, +1.0}, {1.0, 1.0}},
+            {{+1.0, -1.0}, {1.0, 0.0}},
+            {{-1.0, -1.0}, {0.0, 0.0}},
         }};
 
         constexpr auto size = sizeof(vertex) * verticies.size();
@@ -301,13 +278,6 @@ struct compute : public common::application<compute> {
 
         const auto& cb = _frames[_current_frame].command_buffer;
         const auto time = current_time();
-
-        uniform ubo{
-            glm::rotate(glm::mat4(1.0f), time, glm::vec3(0.0f, 0.0f, 1.0f)),
-            glm::mat4(1.0f),
-            glm::mat4(1.0f),
-        };
-        _uniform_buffer.copy(&ubo, sizeof(ubo));
 
         vk::ClearValue clear_values[] = {
             vk::ClearColorValue{0.5f, 0.5f, 0.5f, 1.0f},
