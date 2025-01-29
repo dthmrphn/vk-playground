@@ -61,12 +61,6 @@ struct headless {
             true,
         };
 
-        resize(width, height);
-
-        vk::DescriptorSetLayoutBinding bindings[] = {
-            vulkan::texture::layout_binding(0),
-        };
-
         vk::DescriptorPoolSize sizes[] = {
             {vk::DescriptorType::eStorageImage, 2},
         };
@@ -74,7 +68,37 @@ struct headless {
         vk::DescriptorPoolCreateInfo dpci{vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 2, sizes};
         _descriptor_pool = _device.make_descriptor_pool(dpci);
 
-        make_headless_context();
+        _compute.queue = _device.compute_queue();
+        _compute.queue_index = _device.queue_family_index(vk::QueueFlagBits::eCompute);
+
+        vk::DescriptorSetLayoutBinding bindings[] = {
+            {0, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute},
+            {1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute},
+        };
+
+        vk::DescriptorSetLayoutCreateInfo dslci{{}, bindings};
+        _compute.descriptor_layout = _device.make_descriptor_set_layout(dslci);
+
+        vk::PipelineLayoutCreateInfo plci{{}, *_compute.descriptor_layout};
+        _compute.pipeline_layout = _device.make_pipeline_layout(plci);
+
+        vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_compute.descriptor_layout};
+        _compute.descriptor_set = std::move(_device.make_descriptor_sets(dsai).front());
+
+        const auto comp_shader = _device.make_shader_module({{}, headless_comp::size, headless_comp::code});
+        vk::PipelineShaderStageCreateInfo pssci{
+            vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eCompute, comp_shader, "main"},
+        };
+        vk::ComputePipelineCreateInfo cpci{{}, pssci, _compute.pipeline_layout};
+        _compute.pipeline = _device.make_pipeline(cpci);
+
+        _compute.command_pool = _device.make_command_pool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _compute.queue_index});
+        vk::CommandBufferAllocateInfo cbai{_compute.command_pool, vk::CommandBufferLevel::ePrimary, 1};
+        _compute.command_buffer = std::move(_device.make_command_buffers(cbai).front());
+
+        _compute.fence = _device.make_fence({vk::FenceCreateFlagBits::eSignaled});
+
+        resize(width, height);
     }
 
     void resize(std::uint32_t width, std::uint32_t height) {
@@ -100,25 +124,6 @@ struct headless {
             vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
         };
         _device.image_transition(_output_texture.image(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-    }
-
-    void make_headless_context() {
-        _compute.queue = _device.compute_queue();
-        _compute.queue_index = _device.queue_family_index(vk::QueueFlagBits::eCompute);
-
-        vk::DescriptorSetLayoutBinding bindings[] = {
-            {0, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute},
-            {1, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute},
-        };
-
-        vk::DescriptorSetLayoutCreateInfo dslci{{}, bindings};
-        _compute.descriptor_layout = _device.make_descriptor_set_layout(dslci);
-
-        vk::PipelineLayoutCreateInfo plci{{}, *_compute.descriptor_layout};
-        _compute.pipeline_layout = _device.make_pipeline_layout(plci);
-
-        vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_compute.descriptor_layout};
-        _compute.descriptor_set = std::move(_device.make_descriptor_sets(dsai).front());
 
         vk::DescriptorImageInfo input_dii{_input_texture.sampler(), _input_texture.view(), vk::ImageLayout::eGeneral};
         vk::DescriptorImageInfo output_dii{_output_texture.sampler(), _output_texture.view(), vk::ImageLayout::eGeneral};
@@ -128,19 +133,6 @@ struct headless {
         };
 
         _device.logical().updateDescriptorSets(wds, nullptr);
-
-        const auto comp_shader = _device.make_shader_module({{}, headless_comp::size, headless_comp::code});
-        vk::PipelineShaderStageCreateInfo pssci{
-            vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eCompute, comp_shader, "main"},
-        };
-        vk::ComputePipelineCreateInfo cpci{{}, pssci, _compute.pipeline_layout};
-        _compute.pipeline = _device.make_pipeline(cpci);
-
-        _compute.command_pool = _device.make_command_pool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _compute.queue_index});
-        vk::CommandBufferAllocateInfo cbai{_compute.command_pool, vk::CommandBufferLevel::ePrimary, 1};
-        _compute.command_buffer = std::move(_device.make_command_buffers(cbai).front());
-
-        _compute.fence = _device.make_fence({vk::FenceCreateFlagBits::eSignaled});
     }
 
     void process_image(const void* src, void* dst, std::int32_t w, std::int32_t h, std::int32_t channels = 4) {
@@ -200,6 +192,7 @@ int main(int argc, char** argv) {
         std::uint32_t width = w;
         std::uint32_t height = h;
         headless headless{width, height};
+        headless.resize(width, height);
 
         std::vector<std::uint8_t> image_bytes(w * h * wc);
 
