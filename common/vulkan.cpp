@@ -203,18 +203,14 @@ void device::copy_buffers(const vk::Buffer& src, const vk::Buffer& dst, vk::Devi
 
     const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
     cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    copy_buffers(cb, src, dst, size);
+    utils::copy_buffers(cb, src, dst, size);
     cb.end();
 
     q.submit(vk::SubmitInfo{{}, {}, *cb});
     q.waitIdle();
 }
 
-void device::copy_buffers(const vk::CommandBuffer& cb, const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) const {
-    cb.copyBuffer(src, dst, {{0, 0, size}});
-}
-
-void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const {
+void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent, vk::ImageLayout new_layout) const {
     const auto i = queue_family_index(vk::QueueFlagBits::eTransfer);
     const auto q = _logical_dev.getQueue(i, 0);
     const auto pool = make_command_pool({
@@ -225,29 +221,11 @@ void device::copy_buffer_to_image(const vk::Buffer& buf, const vk::Image& img, v
     const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
 
     cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    copy_buffer_to_image(cb, buf, img, extent);
+    utils::copy_buffer_to_image(cb, buf, img, extent, new_layout);
     cb.end();
 
     q.submit(vk::SubmitInfo{{}, {}, *cb});
     q.waitIdle();
-}
-
-void device::copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent) const {
-    image_transition(cb, img, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-
-    cb.copyBufferToImage(buf,
-                         img,
-                         vk::ImageLayout::eTransferDstOptimal,
-                         vk::BufferImageCopy{
-                             0,
-                             0,
-                             0,
-                             {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
-                             {0, 0, 0},
-                             extent,
-                         });
-
-    image_transition(cb, img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 }
 
 void device::image_transition(const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const {
@@ -261,60 +239,11 @@ void device::image_transition(const vk::Image& img, vk::ImageLayout old_layout, 
     const auto cb = std::move(make_command_buffers({pool, vk::CommandBufferLevel::ePrimary, 1}).front());
 
     cb.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    image_transition(cb, img, old_layout, new_layout);
+    utils::image_transition(cb, img, old_layout, new_layout);
     cb.end();
 
     q.submit(vk::SubmitInfo{{}, {}, *cb});
     q.waitIdle();
-}
-
-void device::image_transition(const vk::CommandBuffer& cb, const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) const {
-    const auto src_stage{vk::PipelineStageFlagBits::eAllCommands};
-    const auto dst_stage{vk::PipelineStageFlagBits::eAllCommands};
-
-    vk::ImageMemoryBarrier barrier{
-        {},
-        {},
-        old_layout,
-        new_layout,
-        {},
-        {},
-        img,
-        {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-    };
-
-    switch (old_layout) {
-    case vk::ImageLayout::eUndefined:
-        barrier.srcAccessMask = vk::AccessFlagBits::eNone;
-        break;
-    case vk::ImageLayout::eTransferSrcOptimal:
-        barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-        break;
-    case vk::ImageLayout::eTransferDstOptimal:
-        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-        break;
-    case vk::ImageLayout::eShaderReadOnlyOptimal:
-        barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
-        break;
-    default:
-        break;
-    }
-
-    switch (new_layout) {
-    case vk::ImageLayout::eTransferSrcOptimal:
-        barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-        break;
-    case vk::ImageLayout::eTransferDstOptimal:
-        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-        break;
-    case vk::ImageLayout::eShaderReadOnlyOptimal:
-        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-        break;
-    default:
-        break;
-    }
-
-    cb.pipelineBarrier(src_stage, dst_stage, {}, {}, {}, barrier);
 }
 
 buffer::buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags mask) : _size(size) {
@@ -344,7 +273,7 @@ const vk::DeviceSize buffer::size() const {
 device_buffer::device_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage)
     : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eDeviceLocal) {}
 
-host_buffer::host_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, void* data)
+host_buffer::host_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, const void* data)
     : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) {
     _mapped = _mem.mapMemory(0, size);
 
@@ -521,5 +450,79 @@ std::vector<vk::ImageView> swapchain::image_views() const {
 std::pair<vk::Result, std::uint32_t> swapchain::acquire_next(std::uint64_t timeout, const vk::Semaphore& semaphore, const vk::Fence& fence) const {
     return _swapchain.acquireNextImage(timeout, semaphore, fence);
 }
+
+namespace utils {
+void copy_buffers(const vk::CommandBuffer& cb, const vk::Buffer& src, const vk::Buffer& dst, vk::DeviceSize size) {
+    cb.copyBuffer(src, dst, {{0, 0, size}});
+}
+
+void image_transition(const vk::CommandBuffer& cb, const vk::Image& img, vk::ImageLayout old_layout, vk::ImageLayout new_layout) {
+    const auto src_stage{vk::PipelineStageFlagBits::eAllCommands};
+    const auto dst_stage{vk::PipelineStageFlagBits::eAllCommands};
+
+    vk::ImageMemoryBarrier barrier{
+        {},
+        {},
+        old_layout,
+        new_layout,
+        {},
+        {},
+        img,
+        {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+    };
+
+    switch (old_layout) {
+    case vk::ImageLayout::eUndefined:
+        barrier.srcAccessMask = vk::AccessFlagBits::eNone;
+        break;
+    case vk::ImageLayout::eTransferSrcOptimal:
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+        break;
+    case vk::ImageLayout::eTransferDstOptimal:
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        break;
+    case vk::ImageLayout::eShaderReadOnlyOptimal:
+        barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
+        break;
+    default:
+        break;
+    }
+
+    switch (new_layout) {
+    case vk::ImageLayout::eTransferSrcOptimal:
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+        break;
+    case vk::ImageLayout::eTransferDstOptimal:
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+        break;
+    case vk::ImageLayout::eShaderReadOnlyOptimal:
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+        break;
+    default:
+        break;
+    }
+
+    cb.pipelineBarrier(src_stage, dst_stage, {}, {}, {}, barrier);
+}
+
+void copy_buffer_to_image(const vk::CommandBuffer& cb, const vk::Buffer& buf, const vk::Image& img, vk::Extent3D extent, vk::ImageLayout new_layout) {
+    image_transition(cb, img, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+
+    cb.copyBufferToImage(buf,
+                         img,
+                         vk::ImageLayout::eTransferDstOptimal,
+                         vk::BufferImageCopy{
+                             0,
+                             0,
+                             0,
+                             {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+                             {0, 0, 0},
+                             extent,
+                         });
+
+    image_transition(cb, img, vk::ImageLayout::eTransferDstOptimal, new_layout);
+}
+
+} // namespace utils
 
 } // namespace vulkan
