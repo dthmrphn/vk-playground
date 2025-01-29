@@ -185,10 +185,14 @@ struct headless {
     }
 };
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        if (argc < 2) {
+            throw std::runtime_error("usage: headless /path/to/image");
+        }
+
         int w{}, h{}, c{}, wc{4};
-        auto data = stbi_load("textures/vulkan.png", &w, &h, &c, wc);
+        auto data = stbi_load(argv[1], &w, &h, &c, wc);
         if (!data) {
             throw std::runtime_error("failed to load image");
         }
