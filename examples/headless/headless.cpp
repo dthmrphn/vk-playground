@@ -49,7 +49,7 @@ struct headless {
         vk::raii::CommandBuffer command_buffer{nullptr};
     } _compute;
 
-    headless() {
+    headless(std::uint32_t width, std::uint32_t height) {
         _device = vulkan::device{
             app_info,
             layers,
@@ -59,7 +59,7 @@ struct headless {
             true,
         };
 
-        make_input_image();
+        resize(width, height);
 
         vk::DescriptorSetLayoutBinding bindings[] = {
             vulkan::texture::layout_binding(0),
@@ -75,43 +75,21 @@ struct headless {
         make_headless_context();
     }
 
-    void make_input_image() {
-        int w{}, h{}, c{}, wc{4};
-        auto data = stbi_load("textures/vulkan.png", &w, &h, &c, wc);
-        if (!data) {
-            throw std::runtime_error("failed to load image");
-        }
-
-        std::uint32_t width = w;
-        std::uint32_t height = h;
-
-        const vk::DeviceSize size = w * h * wc;
-        vulkan::host_buffer staging{
-            _device,
-            size,
-            vk::BufferUsageFlagBits::eTransferSrc,
-        };
-        staging.copy(data, size);
-        _buffer_size = size;
-
+    void resize(std::uint32_t width, std::uint32_t height) {
         _input_texture = {
             _device,
             width,
             height,
-            vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferDst,
+            vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferDst,
         };
-
-        _device.copy_buffer_to_image(staging.buf(), _input_texture.image(), _input_texture.extent());
-
-        _device.image_transition(_input_texture.image(), vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral);
+        _device.image_transition(_input_texture.image(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
         _output_texture = {
             _device,
             width,
             height,
-            vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eStorage,
+            vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,
         };
-
         _device.image_transition(_output_texture.image(), vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
     }
 
@@ -156,17 +134,20 @@ struct headless {
         _compute.semaphore = _device.make_semaphore({});
     }
 
-    void record_compute() {
+    void process_image(const void* src, void* dst, std::int32_t w, std::int32_t h, std::int32_t channels = 4) {
+        const vk::DeviceSize dev_size = w * h * channels;
+        vulkan::host_buffer staging{
+            _device,
+            dev_size,
+            vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
+            src,
+        };
+
         _compute.command_buffer.begin({});
+        vulkan::utils::copy_buffer_to_image(*_compute.command_buffer, staging.buf(), _input_texture.image(), _input_texture.extent(), vk::ImageLayout::eGeneral);
         _compute.command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, _compute.pipeline);
         _compute.command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, _compute.pipeline_layout, 0, *_compute.descriptor_set, nullptr);
         _compute.command_buffer.dispatch(_input_texture.extent().width / local_size, _input_texture.extent().height / local_size, 1);
-
-        vulkan::host_buffer staging{
-            _device,
-            _buffer_size,
-            vk::BufferUsageFlagBits::eTransferDst,
-        };
 
         vk::BufferImageCopy bic{
             0,
@@ -187,19 +168,27 @@ struct headless {
         _compute.queue.submit(info);
         _compute.queue.waitIdle();
 
-        std::vector<std::uint8_t> image_bytes(_buffer_size);
-        staging.copy_to(image_bytes.data(), _buffer_size);
-        int w = _output_texture.width();
-        int h = _output_texture.height();
-        stbi_write_jpg("headless.jpg", w, h, 4, image_bytes.data(), 90);
+        staging.copy_to(dst, dev_size);
     }
 };
 
 int main() {
     try {
-        headless headless{};
+        int w{}, h{}, c{}, wc{4};
+        auto data = stbi_load("textures/vulkan.png", &w, &h, &c, wc);
+        if (!data) {
+            throw std::runtime_error("failed to load image");
+        }
 
-        headless.record_compute();
+        std::uint32_t width = w;
+        std::uint32_t height = h;
+        headless headless{width, height};
+
+        std::vector<std::uint8_t> image_bytes(w * h * wc);
+
+        headless.process_image(data, image_bytes.data(), w, h);
+
+        stbi_write_jpg("headless.jpg", w, h, 4, image_bytes.data(), 90);
 
     } catch (const std::exception& ex) {
         fmt::print("error: {}\n", ex.what());
