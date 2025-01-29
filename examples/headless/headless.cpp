@@ -39,17 +39,16 @@ struct headless {
 
     vk::raii::DescriptorPool _descriptor_pool{nullptr};
 
-    struct {
-        vk::Queue queue{nullptr};
-        std::uint32_t queue_index{};
-        vk::raii::DescriptorSetLayout descriptor_layout{nullptr};
-        vk::raii::DescriptorSet descriptor_set{nullptr};
-        vk::raii::Pipeline pipeline{nullptr};
-        vk::raii::PipelineLayout pipeline_layout{nullptr};
-        vk::raii::CommandPool command_pool{nullptr};
-        vk::raii::CommandBuffer command_buffer{nullptr};
-        vk::raii::Fence fence{nullptr};
-    } _compute;
+    vk::Queue _queue{nullptr};
+    std::uint32_t _queue_index{};
+
+    vk::raii::DescriptorSetLayout _descriptor_layout{nullptr};
+    vk::raii::DescriptorSet _descriptor_set{nullptr};
+    vk::raii::Pipeline _pipeline{nullptr};
+    vk::raii::PipelineLayout _pipeline_layout{nullptr};
+    vk::raii::CommandPool _command_pool{nullptr};
+    vk::raii::CommandBuffer _command_buffer{nullptr};
+    vk::raii::Fence _fence{nullptr};
 
     headless() {
         _device = vulkan::device{
@@ -68,8 +67,8 @@ struct headless {
         vk::DescriptorPoolCreateInfo dpci{vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, 2, sizes};
         _descriptor_pool = _device.make_descriptor_pool(dpci);
 
-        _compute.queue = _device.compute_queue();
-        _compute.queue_index = _device.queue_family_index(vk::QueueFlagBits::eCompute);
+        _queue = _device.compute_queue();
+        _queue_index = _device.queue_family_index(vk::QueueFlagBits::eCompute);
 
         vk::DescriptorSetLayoutBinding bindings[] = {
             {0, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute},
@@ -77,26 +76,26 @@ struct headless {
         };
 
         vk::DescriptorSetLayoutCreateInfo dslci{{}, bindings};
-        _compute.descriptor_layout = _device.make_descriptor_set_layout(dslci);
+        _descriptor_layout = _device.make_descriptor_set_layout(dslci);
 
-        vk::PipelineLayoutCreateInfo plci{{}, *_compute.descriptor_layout};
-        _compute.pipeline_layout = _device.make_pipeline_layout(plci);
+        vk::PipelineLayoutCreateInfo plci{{}, *_descriptor_layout};
+        _pipeline_layout = _device.make_pipeline_layout(plci);
 
-        vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_compute.descriptor_layout};
-        _compute.descriptor_set = std::move(_device.make_descriptor_sets(dsai).front());
+        vk::DescriptorSetAllocateInfo dsai{_descriptor_pool, *_descriptor_layout};
+        _descriptor_set = std::move(_device.make_descriptor_sets(dsai).front());
 
         const auto comp_shader = _device.make_shader_module({{}, headless_comp::size, headless_comp::code});
         vk::PipelineShaderStageCreateInfo pssci{
             vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eCompute, comp_shader, "main"},
         };
-        vk::ComputePipelineCreateInfo cpci{{}, pssci, _compute.pipeline_layout};
-        _compute.pipeline = _device.make_pipeline(cpci);
+        vk::ComputePipelineCreateInfo cpci{{}, pssci, _pipeline_layout};
+        _pipeline = _device.make_pipeline(cpci);
 
-        _compute.command_pool = _device.make_command_pool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _compute.queue_index});
-        vk::CommandBufferAllocateInfo cbai{_compute.command_pool, vk::CommandBufferLevel::ePrimary, 1};
-        _compute.command_buffer = std::move(_device.make_command_buffers(cbai).front());
+        _command_pool = _device.make_command_pool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, _queue_index});
+        vk::CommandBufferAllocateInfo cbai{_command_pool, vk::CommandBufferLevel::ePrimary, 1};
+        _command_buffer = std::move(_device.make_command_buffers(cbai).front());
 
-        _compute.fence = _device.make_fence({vk::FenceCreateFlagBits::eSignaled});
+        _fence = _device.make_fence({vk::FenceCreateFlagBits::eSignaled});
     }
 
     void resize(std::uint32_t width, std::uint32_t height) {
@@ -126,8 +125,8 @@ struct headless {
         vk::DescriptorImageInfo input_dii{_input_texture.sampler(), _input_texture.view(), vk::ImageLayout::eGeneral};
         vk::DescriptorImageInfo output_dii{_output_texture.sampler(), _output_texture.view(), vk::ImageLayout::eGeneral};
         vk::WriteDescriptorSet wds[] = {
-            vk::WriteDescriptorSet{_compute.descriptor_set, 0, 0, vk::DescriptorType::eStorageImage, input_dii},
-            vk::WriteDescriptorSet{_compute.descriptor_set, 1, 0, vk::DescriptorType::eStorageImage, output_dii},
+            vk::WriteDescriptorSet{_descriptor_set, 0, 0, vk::DescriptorType::eStorageImage, input_dii},
+            vk::WriteDescriptorSet{_descriptor_set, 1, 0, vk::DescriptorType::eStorageImage, output_dii},
         };
 
         _device.logical().updateDescriptorSets(wds, nullptr);
@@ -137,12 +136,12 @@ struct headless {
         const vk::DeviceSize dev_size = w * h * 4;
         _staging.copy(src, dev_size);
 
-        _compute.command_buffer.begin({});
-        vulkan::utils::copy_buffer_to_image(*_compute.command_buffer, _staging.buf(), _input_texture.image(), _input_texture.extent(), vk::ImageLayout::eGeneral);
-        _compute.command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, _compute.pipeline);
-        _compute.command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, _compute.pipeline_layout, 0, *_compute.descriptor_set, nullptr);
-        _compute.command_buffer.dispatch(_input_texture.extent().width / local_size, _input_texture.extent().height / local_size, 1);
-        
+        _command_buffer.begin({});
+        vulkan::utils::copy_buffer_to_image(*_command_buffer, _staging.buf(), _input_texture.image(), _input_texture.extent(), vk::ImageLayout::eGeneral);
+        _command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, _pipeline);
+        _command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, _pipeline_layout, 0, *_descriptor_set, nullptr);
+        _command_buffer.dispatch(_input_texture.extent().width / local_size, _input_texture.extent().height / local_size, 1);
+
         vk::BufferImageCopy bic{
             0,
             0,
@@ -151,17 +150,17 @@ struct headless {
             {0, 0, 0},
             _output_texture.extent(),
         };
-        _compute.command_buffer.copyImageToBuffer(_output_texture.image(), vk::ImageLayout::eGeneral, _staging.buf(), bic);
-        _compute.command_buffer.end();
+        _command_buffer.copyImageToBuffer(_output_texture.image(), vk::ImageLayout::eGeneral, _staging.buf(), bic);
+        _command_buffer.end();
 
-        _device.logical().resetFences(*_compute.fence);
+        _device.logical().resetFences(*_fence);
         vk::SubmitInfo info{
             nullptr,
             {},
-            *_compute.command_buffer,
+            *_command_buffer,
         };
-        _compute.queue.submit(info, _compute.fence);
-        const auto res = _device.logical().waitForFences(*_compute.fence, vk::True, -1);
+        _queue.submit(info, _fence);
+        const auto res = _device.logical().waitForFences(*_fence, vk::True, -1);
 
         _staging.copy_to(dst, dev_size);
     }
