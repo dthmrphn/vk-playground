@@ -1,5 +1,6 @@
 #include "vulkan.hpp"
 
+#include <chrono>
 #include <fmt/core.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -32,6 +33,7 @@ struct headless {
     vulkan::device _device;
     vulkan::texture _input_texture;
     vulkan::texture _output_texture;
+    vulkan::host_buffer _staging;
 
     vk::DeviceSize _buffer_size;
 
@@ -44,9 +46,9 @@ struct headless {
         vk::raii::DescriptorSet descriptor_set{nullptr};
         vk::raii::Pipeline pipeline{nullptr};
         vk::raii::PipelineLayout pipeline_layout{nullptr};
-        vk::raii::Semaphore semaphore{nullptr};
         vk::raii::CommandPool command_pool{nullptr};
         vk::raii::CommandBuffer command_buffer{nullptr};
+        vk::raii::Fence fence{nullptr};
     } _compute;
 
     headless(std::uint32_t width, std::uint32_t height) {
@@ -76,6 +78,13 @@ struct headless {
     }
 
     void resize(std::uint32_t width, std::uint32_t height) {
+        const vk::DeviceSize dev_size = width * height * 4;
+        _staging = {
+            _device,
+            dev_size,
+            vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
+        };
+
         _input_texture = {
             _device,
             width,
@@ -131,20 +140,19 @@ struct headless {
         vk::CommandBufferAllocateInfo cbai{_compute.command_pool, vk::CommandBufferLevel::ePrimary, 1};
         _compute.command_buffer = std::move(_device.make_command_buffers(cbai).front());
 
-        _compute.semaphore = _device.make_semaphore({});
+        _compute.fence = _device.make_fence({vk::FenceCreateFlagBits::eSignaled});
     }
 
     void process_image(const void* src, void* dst, std::int32_t w, std::int32_t h, std::int32_t channels = 4) {
-        const vk::DeviceSize dev_size = w * h * channels;
-        vulkan::host_buffer staging{
-            _device,
-            dev_size,
-            vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
-            src,
-        };
+        const vk::DeviceSize dev_size = w * h * 4;
+        _staging.copy(src, dev_size);
+
+        while (vk::Result::eTimeout == _device.logical().waitForFences(*_compute.fence, vk::True, -1)) {
+        }
+        _device.logical().resetFences(*_compute.fence);
 
         _compute.command_buffer.begin({});
-        vulkan::utils::copy_buffer_to_image(*_compute.command_buffer, staging.buf(), _input_texture.image(), _input_texture.extent(), vk::ImageLayout::eGeneral);
+        vulkan::utils::copy_buffer_to_image(*_compute.command_buffer, _staging.buf(), _input_texture.image(), _input_texture.extent(), vk::ImageLayout::eGeneral);
         _compute.command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, _compute.pipeline);
         _compute.command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, _compute.pipeline_layout, 0, *_compute.descriptor_set, nullptr);
         _compute.command_buffer.dispatch(_input_texture.extent().width / local_size, _input_texture.extent().height / local_size, 1);
@@ -157,7 +165,7 @@ struct headless {
             {0, 0, 0},
             _output_texture.extent(),
         };
-        _compute.command_buffer.copyImageToBuffer(_output_texture.image(), vk::ImageLayout::eGeneral, staging.buf(), bic);
+        _compute.command_buffer.copyImageToBuffer(_output_texture.image(), vk::ImageLayout::eGeneral, _staging.buf(), bic);
         _compute.command_buffer.end();
 
         vk::SubmitInfo info{
@@ -165,10 +173,15 @@ struct headless {
             {},
             *_compute.command_buffer,
         };
-        _compute.queue.submit(info);
-        _compute.queue.waitIdle();
+        _compute.queue.submit(info, _compute.fence);
 
-        staging.copy_to(dst, dev_size);
+        wait_idle();
+
+        _staging.copy_to(dst, dev_size);
+    }
+
+    void wait_idle() {
+        _device.logical().waitIdle();
     }
 };
 
@@ -186,9 +199,16 @@ int main() {
 
         std::vector<std::uint8_t> image_bytes(w * h * wc);
 
-        headless.process_image(data, image_bytes.data(), w, h);
+        for (int i = 0; i < 20; ++i) {
+            const auto now = std::chrono::steady_clock::now();
+            headless.process_image(data, image_bytes.data(), w, h);
+            const auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - now).count();
+            fmt::print("took {}ms\n", dur);
+        }
 
         stbi_write_jpg("headless.jpg", w, h, 4, image_bytes.data(), 90);
+
+        headless.wait_idle();
 
     } catch (const std::exception& ex) {
         fmt::print("error: {}\n", ex.what());
