@@ -51,7 +51,7 @@ struct headless {
         vk::raii::Fence fence{nullptr};
     } _compute;
 
-    headless(std::uint32_t width, std::uint32_t height) {
+    headless() {
         _device = vulkan::device{
             app_info,
             layers,
@@ -97,8 +97,6 @@ struct headless {
         _compute.command_buffer = std::move(_device.make_command_buffers(cbai).front());
 
         _compute.fence = _device.make_fence({vk::FenceCreateFlagBits::eSignaled});
-
-        resize(width, height);
     }
 
     void resize(std::uint32_t width, std::uint32_t height) {
@@ -139,16 +137,12 @@ struct headless {
         const vk::DeviceSize dev_size = w * h * 4;
         _staging.copy(src, dev_size);
 
-        while (vk::Result::eTimeout == _device.logical().waitForFences(*_compute.fence, vk::True, -1)) {
-        }
-        _device.logical().resetFences(*_compute.fence);
-
         _compute.command_buffer.begin({});
         vulkan::utils::copy_buffer_to_image(*_compute.command_buffer, _staging.buf(), _input_texture.image(), _input_texture.extent(), vk::ImageLayout::eGeneral);
         _compute.command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, _compute.pipeline);
         _compute.command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, _compute.pipeline_layout, 0, *_compute.descriptor_set, nullptr);
         _compute.command_buffer.dispatch(_input_texture.extent().width / local_size, _input_texture.extent().height / local_size, 1);
-
+        
         vk::BufferImageCopy bic{
             0,
             0,
@@ -160,14 +154,14 @@ struct headless {
         _compute.command_buffer.copyImageToBuffer(_output_texture.image(), vk::ImageLayout::eGeneral, _staging.buf(), bic);
         _compute.command_buffer.end();
 
+        _device.logical().resetFences(*_compute.fence);
         vk::SubmitInfo info{
             nullptr,
             {},
             *_compute.command_buffer,
         };
         _compute.queue.submit(info, _compute.fence);
-
-        wait_idle();
+        const auto res = _device.logical().waitForFences(*_compute.fence, vk::True, -1);
 
         _staging.copy_to(dst, dev_size);
     }
@@ -191,7 +185,7 @@ int main(int argc, char** argv) {
 
         std::uint32_t width = w;
         std::uint32_t height = h;
-        headless headless{width, height};
+        headless headless{};
         headless.resize(width, height);
 
         std::vector<std::uint8_t> image_bytes(w * h * wc);
