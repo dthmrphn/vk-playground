@@ -197,7 +197,7 @@ struct compute : public common::application<compute> {
             vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferDst,
         };
 
-        _device.copy_buffer_to_image(staging.buf(), _input_texture.image(), _input_texture.extent());
+        _device.copy_buffer_to_image(staging.buf(), _input_texture.image(), _input_texture.extent(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
         _device.image_transition(_input_texture.image(), vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral);
 

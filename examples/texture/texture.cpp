@@ -219,7 +219,7 @@ struct texture : public common::application<texture> {
 
         _texture = {_device, width, height};
 
-        _device.copy_buffer_to_image(staging.buf(), _texture.image(), _texture.extent());
+        _device.copy_buffer_to_image(staging.buf(), _texture.image(), _texture.extent(), vk::ImageLayout::eShaderReadOnlyOptimal);
     }
 
     void record(std::uint32_t i) {
