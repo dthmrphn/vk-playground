@@ -274,7 +274,7 @@ device_buffer::device_buffer(const device& device, vk::DeviceSize size, vk::Buff
     : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eDeviceLocal) {}
 
 host_buffer::host_buffer(const device& device, vk::DeviceSize size, vk::BufferUsageFlags usage, const void* data)
-    : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent) {
+    : buffer(device, size, usage, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached) {
     _mapped = _mem.mapMemory(0, size);
 
     if (data) {
