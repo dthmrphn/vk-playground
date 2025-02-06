@@ -3,3 +3,4 @@ build/
 .temp/
 *.ini
 *.jpg
+*.bmp
