@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <vulkan/vulkan_raii.hpp>
 
 #include <fmt/core.h>
@@ -10,36 +11,84 @@ constexpr static vk::ApplicationInfo app_info = {
     VK_API_VERSION_1_0,
 };
 
-void device_info(const vk::raii::PhysicalDevice& dev) {
-    const auto props = dev.getProperties();
+std::string driver_version(const vk::PhysicalDeviceProperties& props) {
+    const auto driver = props.driverVersion;
+    const auto vendor = props.vendorID;
+
+    if (vendor == 4318) {
+        return fmt::format("{}.{}.{}.{}", (driver >> 22) & 0x3ff, (driver >> 14) & 0x0ff, (driver >> 6) & 0x0ff, (driver)&0x003f);
+    }
+
+#if defined(WIN32)
+    if (vendor == 0x8086) {
+        return fmt::format("{}.{}", (driver >> 14), (driver)&0x3fff);
+    }
+#endif
+
+    return fmt::format("{}.{}.{}", (driver >> 22), (driver >> 12) & 0x3ff, (driver & 0xfff));
+}
+
+void device_info(const vk::PhysicalDeviceProperties& props) {
     fmt::print("name: {}\n", props.deviceName.data());
     fmt::print("type: {}\n", vk::to_string(props.deviceType));
     const auto major = VK_VERSION_MAJOR(props.apiVersion);
     const auto minor = VK_VERSION_MINOR(props.apiVersion);
     const auto patch = VK_VERSION_PATCH(props.apiVersion);
-    fmt::print("api: {}.{}.{}\n", major, minor, patch);
-    fmt::print("driver: {}\n", props.driverVersion);
-    fmt::print("\n");
+    fmt::print("api version: {}.{}.{}\n", major, minor, patch);
+    fmt::print("driver version: {}\n", driver_version(props));
 }
 
-vk::raii::PhysicalDevice pick_device(const vk::raii::PhysicalDevices& devs) {
-    for (const auto& d : devs) {
+void device_info2(const vk::PhysicalDevice& dev) {
+    vk::PhysicalDeviceDriverProperties dri_props{};
+    vk::PhysicalDeviceProperties2 props2{{}, &dri_props};
+    dev.getProperties2(&props2);
+
+    device_info(props2.properties);
+    fmt::print("driver info: {} {}\n", dri_props.driverInfo.data(), dri_props.driverName.data());
+}
+
+vk::raii::PhysicalDevice pick_device(const vk::raii::Instance& instance) {
+    vk::raii::PhysicalDevice discrete{nullptr};
+    vk::raii::PhysicalDevice integrated{nullptr};
+
+    for (const auto& d : instance.enumeratePhysicalDevices()) {
         const auto props = d.getProperties();
         if (props.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) {
-            return d;
+            discrete = d;
+        }
+
+        if (props.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) {
+            integrated = d;
         }
     }
 
-    return nullptr;
+    if (*discrete) {
+        return discrete;
+    }
+
+    if (*integrated) {
+        return integrated;
+    }
+
+    throw std::runtime_error("suitable device not found");
 }
 
 int main() {
-    vk::raii::Context context;
-    vk::raii::Instance instance{
-        context,
-        vk::InstanceCreateInfo{{}, &app_info, nullptr, nullptr},
-    };
+    try {
+        vk::raii::Context context;
+        vk::raii::Instance instance{
+            context,
+            vk::InstanceCreateInfo{{}, &app_info, nullptr, nullptr},
+        };
 
-    vk::raii::PhysicalDevices devs{instance};
-    const auto dev = pick_device(devs);
+        const auto dev = pick_device(instance);
+        fmt::print("found suitable device:\n");
+        device_info2(dev);
+
+    } catch (const std::exception& ex) {
+        fmt::print("error: {}\n", ex.what());
+        return 1;
+    }
+
+    return 0;
 }
