@@ -8,7 +8,7 @@ constexpr static vk::ApplicationInfo app_info = {
     1,
     "engine",
     1,
-    VK_API_VERSION_1_0,
+    VK_API_VERSION_1_3,
 };
 
 std::string driver_version(const vk::PhysicalDeviceProperties& props) {
@@ -39,12 +39,12 @@ void device_info(const vk::PhysicalDeviceProperties& props) {
 }
 
 void device_info2(const vk::PhysicalDevice& dev) {
-    vk::PhysicalDeviceDriverProperties dri_props{};
-    vk::PhysicalDeviceProperties2 props2{{}, &dri_props};
-    dev.getProperties2(&props2);
+    const auto chain = dev.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceDriverProperties>();
+    const auto& props2 = chain.get<vk::PhysicalDeviceProperties2>();
+    const auto& dri_props = chain.get<vk::PhysicalDeviceDriverProperties>();
 
     device_info(props2.properties);
-    fmt::print("driver info: {} {}\n", dri_props.driverInfo.data(), dri_props.driverName.data());
+    fmt::print("driver info: {} {} {}\n", vk::to_string(dri_props.driverID), dri_props.driverInfo.data(), dri_props.driverName.data());
 }
 
 vk::raii::PhysicalDevice pick_device(const vk::raii::Instance& instance) {
