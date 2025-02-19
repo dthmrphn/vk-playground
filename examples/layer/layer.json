@@ -1,0 +1,17 @@
+{
+  "file_format_version" : "1.0.0",
+  "layer" : {
+    "name": "VK_LAYER_layer",
+    "type": "GLOBAL",
+    "library_path": "@layer_path@",
+    "api_version": "1.0.0",
+    "implementation_version": "1",
+    "description": "Sample layer"
+  },
+  "enable_environment": {
+    "ENABLE_LAYER": "1"
+  },
+  "disable_environment": {
+    "DISABLE_LAYER": "1"
+  }
+}
