@@ -1,5 +1,6 @@
 #include "wsi.hpp"
 
+#include <cstdlib>
 #include <fmt/format.h>
 
 #include <linux/input-event-codes.h>
@@ -8,10 +9,7 @@
 #include "xdg-shell.h"
 #include <wayland-client-core.h>
 #include <wayland-client-protocol.h>
-
-#include <cstring>
-#include <queue>
-#include <stdexcept>
+#include <wayland-cursor.h>
 
 template <>
 void std::default_delete<wl_display>::operator()(wl_display* p) const {
@@ -49,6 +47,16 @@ void std::default_delete<wl_seat>::operator()(wl_seat* p) const {
 }
 
 template <>
+void std::default_delete<wl_shm>::operator()(wl_shm* p) const {
+    wl_shm_destroy(p);
+}
+
+template <>
+void std::default_delete<wl_cursor_theme>::operator()(wl_cursor_theme* p) const {
+    wl_cursor_theme_destroy(p);
+}
+
+template <>
 void std::default_delete<xdg_wm_base>::operator()(xdg_wm_base* p) const {
     xdg_wm_base_destroy(p);
 }
@@ -64,7 +72,21 @@ void std::default_delete<xdg_toplevel>::operator()(xdg_toplevel* p) const {
 }
 
 namespace wsi {
-namespace wl {
+
+using wl_display_ptr = std::unique_ptr<wl_display>;
+using wl_registry_ptr = std::unique_ptr<wl_registry>;
+using wl_compositor_ptr = std::unique_ptr<wl_compositor>;
+using wl_surface_ptr = std::unique_ptr<wl_surface>;
+using wl_keyboard_ptr = std::unique_ptr<wl_keyboard>;
+using wl_pointer_ptr = std::unique_ptr<wl_pointer>;
+using wl_seat_ptr = std::unique_ptr<wl_seat>;
+using wl_shm_ptr = std::unique_ptr<wl_shm>;
+using wl_cursor_theme_ptr = std::unique_ptr<wl_cursor_theme>;
+
+using xdg_wm_base_ptr = std::unique_ptr<xdg_wm_base>;
+using xdg_surface_ptr = std::unique_ptr<xdg_surface>;
+using xdg_toplevel_ptr = std::unique_ptr<xdg_toplevel>;
+
 template <typename T>
 std::unique_ptr<T> make_unique(T* ptr) {
     if (!ptr) {
@@ -79,287 +101,229 @@ std::unique_ptr<T> registry_bind(wl_registry* registry, uint32_t name, const wl_
     return make_unique<T>(p);
 }
 
-namespace display {
-using ptr = std::unique_ptr<wl_display>;
-} // namespace display
+class wayland final : public window {
+    wl_display_ptr display;
+    wl_registry_ptr registry;
+    wl_compositor_ptr compositor;
+    wl_surface_ptr surface;
+    wl_keyboard_ptr keyboard;
+    wl_pointer_ptr pointer;
+    wl_seat_ptr seat;
+    wl_shm_ptr shm;
+    wl_surface_ptr cursor_surf;
+    wl_cursor_theme_ptr cursor_theme;
 
-namespace registry {
-using ptr = std::unique_ptr<wl_registry>;
-static void global(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version);
-static void remove(void* data, wl_registry* registry, uint32_t name);
-static constexpr wl_registry_listener listener = {global, remove};
-} // namespace registry
-
-namespace compositor {
-using ptr = std::unique_ptr<wl_compositor>;
-} // namespace compositor
-
-namespace surface {
-using ptr = std::unique_ptr<wl_surface>;
-} // namespace surface
-
-namespace keyboard {
-using ptr = std::unique_ptr<wl_keyboard>;
-} // namespace keyboard
-
-namespace pointer {
-using ptr = std::unique_ptr<wl_pointer>;
-static void enter(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surface, wl_fixed_t surface_x, wl_fixed_t surface_y);
-static void leave(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surface);
-static void motion(void* data, wl_pointer* wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y);
-static void button(void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state);
-static void axis(void* data, wl_pointer* wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value);
-static void frame(void* data, wl_pointer* wl_pointer);
-static void axis_source(void* data, struct wl_pointer* wl_pointer, uint32_t axis_source);
-static void axis_stop(void* data, struct wl_pointer* wl_pointer, uint32_t time, uint32_t axis);
-static void axis_discrete(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t discrete);
-static void axis_value120(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t value120);
-static void axis_relative_direction(void* data, struct wl_pointer* wl_pointer, uint32_t axis, uint32_t direction);
-static constexpr wl_pointer_listener listener = {enter, leave, motion, button, axis, frame, axis_source, axis_stop, axis_discrete, axis_value120, axis_relative_direction};
-
-} // namespace pointer
-
-namespace seat {
-using ptr = std::unique_ptr<wl_seat>;
-static void capabilities(void* data, wl_seat* seat, uint32_t caps);
-static void name(void* data, wl_seat* seat, const char* name);
-static constexpr wl_seat_listener listener = {capabilities, name};
-} // namespace seat
-
-} // namespace wl
-
-namespace xdg {
-namespace wm_base {
-using ptr = std::unique_ptr<xdg_wm_base>;
-static void ping(void* data, struct xdg_wm_base* xdg_wm_base, uint32_t serial);
-static constexpr xdg_wm_base_listener listener = {ping};
-} // namespace wm_base
-
-namespace surface {
-using ptr = std::unique_ptr<xdg_surface>;
-static void configure(void* data, struct xdg_surface* xdg_surface, uint32_t serial);
-static constexpr xdg_surface_listener listener = {configure};
-} // namespace surface
-
-namespace toplevel {
-using ptr = std::unique_ptr<xdg_toplevel>;
-static void configure(void* data, struct xdg_toplevel* toplevel, int32_t width, int32_t height, struct wl_array* states);
-static void close(void* data, struct xdg_toplevel* xdg_toplevel);
-static void configure_bounds(void* data, struct xdg_toplevel* xdg_toplevel, int32_t width, int32_t height);
-static void wm_capabilities(void* data, struct xdg_toplevel* xdg_toplevel, struct wl_array* capabilities);
-static constexpr xdg_toplevel_listener listener = {configure, close, configure_bounds, wm_capabilities};
-} // namespace toplevel
-
-} // namespace xdg
-
-struct platform {
-    wl::display::ptr display;
-    wl::registry::ptr registry;
-    wl::compositor::ptr compositor;
-    wl::surface::ptr surface;
-    wl::keyboard::ptr keyboard;
-    wl::pointer::ptr pointer;
-    wl::seat::ptr seat;
-
-    xdg::wm_base::ptr xdg_wm_base;
-    xdg::surface::ptr xdg_surface;
-    xdg::toplevel::ptr xdg_toplevel;
+    xdg_wm_base_ptr xdg_wmbase;
+    xdg_surface_ptr xdg_surface;
+    xdg_toplevel_ptr xdg_toplevel;
 
     int32_t width;
     int32_t height;
 
-    bool running;
+    static wayland& self(void* data) {
+        return *static_cast<wayland*>(data);
+    }
 
-    std::queue<event_type> events;
-
-    platform(int32_t width, int32_t height, const char* name) : width(width), height(height), running(true) {
-        display = wl::make_unique(wl_display_connect(NULL));
-        registry = wl::make_unique(wl_display_get_registry(display.get()));
-        wl_registry_add_listener(registry.get(), &wl::registry::listener, this);
+  public:
+    wayland(int32_t width, int32_t height, std::string_view name) : width(width), height(height) {
+        display = make_unique(wl_display_connect(NULL));
+        registry = make_unique(wl_display_get_registry(display.get()));
+        {
+            static constexpr wl_registry_listener listener = {
+                registry_global,
+                registry_remove,
+            };
+            wl_registry_add_listener(registry.get(), &listener, this);
+        }
         wl_display_roundtrip(display.get());
 
-        surface = wl::make_unique(wl_compositor_create_surface(compositor.get()));
-        xdg_surface = wl::make_unique(xdg_wm_base_get_xdg_surface(xdg_wm_base.get(), surface.get()));
-        xdg_surface_add_listener(xdg_surface.get(), &xdg::surface::listener, this);
+        surface = make_unique(wl_compositor_create_surface(compositor.get()));
+        xdg_surface = make_unique(xdg_wm_base_get_xdg_surface(xdg_wmbase.get(), surface.get()));
+        {
+            static constexpr xdg_surface_listener listener = {surface_configure};
+            xdg_surface_add_listener(xdg_surface.get(), &listener, this);
+        }
 
-        xdg_toplevel = wl::make_unique(xdg_surface_get_toplevel(xdg_surface.get()));
-        xdg_toplevel_set_title(xdg_toplevel.get(), name);
-        xdg_toplevel_add_listener(xdg_toplevel.get(), &xdg::toplevel::listener, this);
+        xdg_toplevel = make_unique(xdg_surface_get_toplevel(xdg_surface.get()));
+        {
+            static constexpr xdg_toplevel_listener listener = {
+                toplevel_configure,
+                toplevel_close,
+                toplevel_configure_bounds,
+                toplevel_wm_capabilities,
+            };
+            xdg_toplevel_add_listener(xdg_toplevel.get(), &listener, this);
+        }
         wl_surface_commit(surface.get());
         wl_display_roundtrip(display.get());
 
-        running = true;
+        int32_t size = 20;
+
+        if (std::getenv("XCURSOR_SIZE")) {
+            size = std::stoi(std::getenv("XCURSOR_SIZE"));
+        }
+
+        cursor_theme = make_unique(wl_cursor_theme_load(std::getenv("XCURSOR_THEME"), size, shm.get()));
+        cursor_surf = make_unique(wl_compositor_create_surface(compositor.get()));
+
+        set_title(name);
+    }
+
+    static void registry_global(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
+        if (!strcmp(interface, wl_compositor_interface.name)) {
+            self(data).compositor = registry_bind<wl_compositor>(registry, name, &wl_compositor_interface, version);
+        }
+
+        if (!strcmp(interface, xdg_wm_base_interface.name)) {
+            self(data).xdg_wmbase = registry_bind<xdg_wm_base>(registry, name, &xdg_wm_base_interface, version);
+            static constexpr xdg_wm_base_listener listener = {xdg_wm_ping};
+            xdg_wm_base_add_listener(self(data).xdg_wmbase.get(), &listener, nullptr);
+        }
+
+        if (!strcmp(interface, wl_seat_interface.name)) {
+            self(data).seat = registry_bind<wl_seat>(registry, name, &wl_seat_interface, 4);
+            static constexpr wl_seat_listener listener = {seat_capabilities, seat_name};
+            wl_seat_add_listener(self(data).seat.get(), &listener, data);
+        }
+
+        if (!strcmp(interface, wl_shm_interface.name)) {
+            self(data).shm = registry_bind<wl_shm>(registry, name, &wl_shm_interface, version);
+        }
+    }
+
+    static void registry_remove(void* data, wl_registry* registry, uint32_t name) {}
+
+    static void seat_capabilities(void* data, wl_seat* seat, uint32_t caps) {
+        bool keyboard = caps & WL_SEAT_CAPABILITY_KEYBOARD;
+        // if (keyboard && !self(data).keyboard) {
+        //     self(data).keyboard = make_unique(wl_seat_get_keyboard(self(data).seat.get()));
+        //     wl_keyboard_add_listener(self(data).keyboard.get(), &keyboard::listener, self);
+        // }
+
+        bool pointer = caps & WL_SEAT_CAPABILITY_POINTER;
+        if (pointer && !self(data).pointer) {
+            self(data).pointer = make_unique(wl_seat_get_pointer(self(data).seat.get()));
+            static constexpr wl_pointer_listener listener = {
+                pointer_enter,
+                pointer_leave,
+                pointer_motion,
+                pointer_button,
+                pointer_axis,
+            };
+
+            wl_pointer_add_listener(self(data).pointer.get(), &listener, data);
+        }
+    }
+
+    static void seat_name(void* data, wl_seat* seat, const char* name) {}
+
+    static void pointer_enter(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surface, wl_fixed_t surface_x, wl_fixed_t surface_y) {
+        const auto cursor = wl_cursor_theme_get_cursor(self(data).cursor_theme.get(), "left_ptr");
+        if (cursor) {
+            const auto img = cursor->images[0];
+            const auto buf = wl_cursor_image_get_buffer(img);
+
+            wl_pointer_set_cursor(wl_pointer, serial, self(data).cursor_surf.get(), img->hotspot_x, img->hotspot_y);
+
+            wl_surface_set_buffer_scale(self(data).cursor_surf.get(), 1);
+            wl_surface_attach(self(data).cursor_surf.get(), buf, 0, 0);
+            wl_surface_damage(self(data).cursor_surf.get(), 0, 0, img->width, img->height);
+            wl_surface_commit(self(data).cursor_surf.get());
+        }
+    }
+
+    static void pointer_leave(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surface) {}
+
+    static void pointer_motion(void* data, wl_pointer* wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
+        const float x = wl_fixed_to_double(surface_x);
+        const float y = wl_fixed_to_double(surface_y);
+        self(data)._events.push(event::mouse::position{x, y});
+    }
+
+    static void pointer_button(void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
+        event::mouse::button ev{};
+        switch (button) {
+        case BTN_LEFT:
+            ev.lmb = (bool)state;
+            break;
+        case BTN_RIGHT:
+            ev.rmb = (bool)state;
+            break;
+        case BTN_MIDDLE:
+            ev.mmb = (bool)state;
+            break;
+        }
+
+        self(data)._events.push(ev);
+    }
+
+    static void pointer_axis(void* data, wl_pointer* wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value) {}
+
+    static void capabilities(void* data, wl_seat* seat, uint32_t caps) {}
+    static void name(void* data, wl_seat* seat, const char* name) {}
+
+    static void xdg_wm_ping(void* data, struct xdg_wm_base* xdg_wm_base, uint32_t serial) {
+        xdg_wm_base_pong(xdg_wm_base, serial);
+    }
+
+    static void surface_configure(void* data, struct xdg_surface* xdg_surface, uint32_t serial) {
+        xdg_surface_ack_configure(xdg_surface, serial);
+    }
+
+    static void toplevel_configure(void* data, struct xdg_toplevel* toplevel, int32_t width, int32_t height, struct wl_array* states) {
+        if (!width && !height) {
+            return;
+        }
+
+        if (self(data).width != width || self(data).height != height) {
+            self(data).width = width;
+            self(data).height = height;
+            self(data)._events.push(event::resize{width, height});
+            wl_surface_commit(self(data).surface.get());
+        }
+    }
+
+    static void toplevel_close(void* data, struct xdg_toplevel* xdg_toplevel) {
+        self(data)._events.push(event::exit{});
+    }
+
+    static void toplevel_configure_bounds(void* data, struct xdg_toplevel* xdg_toplevel, int32_t width, int32_t height) {}
+    static void toplevel_wm_capabilities(void* data, struct xdg_toplevel* xdg_toplevel, struct wl_array* capabilities) {}
+
+    VkSurfaceKHR create_surface(VkInstance instance) const override {
+        VkWaylandSurfaceCreateInfoKHR info{};
+        info.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
+        info.surface = surface.get();
+        info.display = display.get();
+
+        VkSurfaceKHR surf{};
+        const auto r = vkCreateWaylandSurfaceKHR(instance, &info, nullptr, &surf);
+        if (r != VK_SUCCESS) {
+            throw std::runtime_error(fmt::format("surface create error: {}", (int)r));
+        }
+
+        return surf;
+    }
+
+    void poll() override {
+        wl_display_dispatch_pending(display.get());
+    }
+
+    void set_title(std::string_view name) override {
+        xdg_toplevel_set_title(xdg_toplevel.get(), name.data());
+        xdg_toplevel_set_app_id(xdg_toplevel.get(), name.data());
     }
 };
 
-namespace wl {
-namespace registry {
-void global(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
-    auto self = static_cast<platform*>(data);
-    if (!strcmp(interface, wl_compositor_interface.name)) {
-        self->compositor = wl::registry_bind<wl_compositor>(registry, name, &wl_compositor_interface, version);
-    }
-
-    if (!strcmp(interface, xdg_wm_base_interface.name)) {
-        self->xdg_wm_base = wl::registry_bind<struct xdg_wm_base>(registry, name, &xdg_wm_base_interface, version);
-        xdg_wm_base_add_listener(self->xdg_wm_base.get(), &xdg::wm_base::listener, nullptr);
-    }
-
-    if (strcmp(interface, wl_seat_interface.name) == 0) {
-        self->seat = wl::registry_bind<wl_seat>(registry, name, &wl_seat_interface, version);
-        wl_seat_add_listener(self->seat.get(), &wl::seat::listener, self);
-    }
-}
-
-void remove(void* data, struct wl_registry* registry, uint32_t name) {}
-} // namespace registry
-
-namespace seat {
-void capabilities(void* data, wl_seat* seat, uint32_t caps) {
-    auto self = static_cast<platform*>(data);
-
-    bool keyboard = caps & WL_SEAT_CAPABILITY_KEYBOARD;
-    // if (keyboard && !self->keyboard) {
-    //     self->keyboard = wl::make_unique(wl_seat_get_keyboard(self->seat.get()));
-    //     wl_keyboard_add_listener(self->keyboard.get(), &wl::keyboard::listener, self);
-    // }
-
-    bool pointer = caps & WL_SEAT_CAPABILITY_POINTER;
-    if (pointer && !self->pointer) {
-        self->pointer = wl::make_unique(wl_seat_get_pointer(self->seat.get()));
-        wl_pointer_add_listener(self->pointer.get(), &wl::pointer::listener, self);
-    }
-}
-
-void name(void* data, wl_seat* seat, const char* name) {}
-
-} // namespace seat
-
-namespace pointer {
-void enter(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surface, wl_fixed_t surface_x, wl_fixed_t surface_y) {}
-
-void leave(void* data, wl_pointer* wl_pointer, uint32_t serial, wl_surface* surface) {}
-
-void motion(void* data, wl_pointer* wl_pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
-    auto self = static_cast<platform*>(data);
-    const float x = wl_fixed_to_double(surface_x);
-    const float y = wl_fixed_to_double(surface_y);
-    self->events.push(event::mouse::position{x, y});
-}
-
-void button(void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
-    auto self = static_cast<platform*>(data);
-    event::mouse::button ev{};
-    switch (button) {
-    case BTN_LEFT:
-        ev.lmb = (bool)state;
-        break;
-    case BTN_RIGHT:
-        ev.rmb = (bool)state;
-        break;
-    case BTN_MIDDLE:
-        ev.mmb = (bool)state;
-        break;
-    }
-
-    self->events.push(ev);
-}
-
-void axis(void* data, wl_pointer* wl_pointer, uint32_t time, uint32_t axis, wl_fixed_t value) {}
-void frame(void* data, wl_pointer* wl_pointer) {}
-void axis_source(void* data, struct wl_pointer* wl_pointer, uint32_t axis_source) {}
-void axis_stop(void* data, struct wl_pointer* wl_pointer, uint32_t time, uint32_t axis) {}
-void axis_discrete(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t discrete) {}
-void axis_value120(void* data, struct wl_pointer* wl_pointer, uint32_t axis, int32_t value120) {}
-void axis_relative_direction(void* data, struct wl_pointer* wl_pointer, uint32_t axis, uint32_t direction) {}
-
-} // namespace pointer
-
-} // namespace wl
-
-namespace xdg {
-namespace wm_base {
-void ping(void* data, struct xdg_wm_base* xdg_wm_base, uint32_t serial) {
-    (void)data;
-    xdg_wm_base_pong(xdg_wm_base, serial);
-}
-} // namespace wm_base
-namespace surface {
-void configure(void* data, struct xdg_surface* xdg_surface, uint32_t serial) {
-    xdg_surface_ack_configure(xdg_surface, serial);
-}
-} // namespace surface
-
-namespace toplevel {
-void configure(void* data, struct xdg_toplevel* toplevel, int32_t width, int32_t height, struct wl_array* states) {
-    auto self = static_cast<platform*>(data);
-
-    if (!width && !height) {
-        return;
-    }
-
-    if (self->width != width || self->height != height) {
-        self->width = width;
-        self->height = height;
-        self->events.push(event::resize{width, height});
-        wl_surface_commit(self->surface.get());
-    }
-}
-
-void close(void* data, struct xdg_toplevel* xdg_toplevel) {
-    auto self = static_cast<platform*>(data);
-    self->running = false;
-}
-
-void configure_bounds(void* data, struct xdg_toplevel* xdg_toplevel, int32_t width, int32_t height) {}
-void wm_capabilities(void* data, struct xdg_toplevel* xdg_toplevel, struct wl_array* capabilities) {}
-} // namespace toplevel
-} // namespace xdg
-
-window::window(std::size_t width, std::size_t height, const std::string& name)
-    : _impl(std::make_unique<platform>(width, height, name.data())) {}
-
-window::~window() = default;
-
-VkSurfaceKHR window::create_surface(VkInstance instance) const {
-    VkWaylandSurfaceCreateInfoKHR info{};
-    info.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
-    info.surface = _impl->surface.get();
-    info.display = _impl->display.get();
-
-    VkSurfaceKHR surf{};
-    const auto r = vkCreateWaylandSurfaceKHR(instance, &info, nullptr, &surf);
-    if (r != VK_SUCCESS) {
-        throw std::runtime_error(fmt::format("surface create error: {}", (int)r));
-    }
-
-    return surf;
-}
-
-std::vector<const char*> window::required_extensions() {
+std::vector<const char*> required_extensions() {
     return {
         VK_KHR_SURFACE_EXTENSION_NAME,
         VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
     };
 }
 
-bool window::handle() const {
-    wl_display_dispatch_pending(_impl->display.get());
-    return _impl->running;
-}
-
-event_type window::handle_event() {
-    if (_impl->events.size()) {
-        const auto e = _impl->events.front();
-        _impl->events.pop();
-        return e;
-    }
-
-    return {};
-}
-
-void window::set_title(const std::string& name) {
-    xdg_toplevel_set_title(_impl->xdg_toplevel.get(), name.c_str());
+std::unique_ptr<window> make_window(std::size_t width, std::size_t height, std::string_view name) {
+    return std::make_unique<wayland>(width, height, name.data());
 }
 
 } // namespace wsi

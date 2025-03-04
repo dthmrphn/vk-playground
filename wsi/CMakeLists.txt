@@ -1,8 +1,8 @@
-if(USE_WAYLAND_WSI) 
+if(WSI STREQUAL "wayland") 
     message(STATUS "using native Wayland wsi backend")
 
     find_package(PkgConfig)
-    pkg_check_modules(WAYLAND wayland-client wayland-scanner)
+    pkg_check_modules(WAYLAND wayland-client wayland-scanner wayland-cursor)
     
     include(FindPackageHandleStandardArgs)
     FIND_PACKAGE_HANDLE_STANDARD_ARGS(WAYLAND DEFAULT_MSG WAYLAND_LIBRARIES)
@@ -23,15 +23,13 @@ if(USE_WAYLAND_WSI)
     target_include_directories(wsi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_BINARY_DIR})
     target_link_libraries(wsi PRIVATE ${WAYLAND_LIBRARIES} fmt::fmt)
 
-elseif(USE_XCB_WSI)
+elseif(WSI STREQUAL "xcb")
     message(STATUS "using native XCB wsi backend")
 
     find_package(X11 REQUIRED)
     add_library(wsi STATIC wsi.xcb.cpp)
     target_include_directories(wsi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(wsi PRIVATE ${X11_LIBRARIES} xcb dl)
-
-    message(STATUS "XCB libs: ${X11_LIBRARIES}")
 
 else()
     message(STATUS "using GLFW as fallback wsi backend")

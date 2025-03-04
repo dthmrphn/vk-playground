@@ -31,7 +31,7 @@ class application_base {
 
     std::size_t _current_frame{};
 
-    wsi::window _window;
+    std::unique_ptr<wsi::window> _window;
 
     vulkan::device _device;
     vulkan::swapchain _swapchain;
@@ -139,6 +139,8 @@ class application : public application_base {
         : application_base(app_info, w, h) {
     }
 
+    bool _running{true};
+
     void run() {
         const auto visitor = overloaded{
             [this](wsi::event::resize e) { application_base::on_resize(e); },
@@ -150,11 +152,15 @@ class application : public application_base {
                 application_base::on_mouse_button(e);
                 impl().on_mouse_button(e);
             },
+            [this](wsi::event::exit e) {
+                _running = false;
+            },
             [this](auto&& e) {},
         };
 
-        while (loop_handler()) {
-            std::visit(visitor, _window.handle_event());
+        while (_running) {
+            application_base::loop_handler();
+            std::visit(visitor, _window->poll_event());
 
             const auto i = acquire_impl();
             record_impl(i);

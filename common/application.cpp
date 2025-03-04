@@ -12,9 +12,9 @@ constexpr static const char* device_extensions[] = {
 
 namespace common {
 application_base::application_base(const vk::ApplicationInfo& app_info, std::uint32_t w, std::uint32_t h)
-    : _name(app_info.pApplicationName), _window(w, h, _name) {
+    : _name(app_info.pApplicationName), _window(wsi::make_window(w, h, _name)) {
     // device creation
-    auto extensions = wsi::window::required_extensions();
+    auto extensions = wsi::required_extensions();
     extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     _device = vulkan::device{
@@ -33,7 +33,7 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     _present_queue = _device.graphic_queue();
 
     // swapchain creation
-    VkSurfaceKHR surf = _window.create_surface(_device.instance());
+    VkSurfaceKHR surf = _window->create_surface(_device.instance());
     _swapchain = vulkan::swapchain{_device, surf, w, h};
 
     // command pool and buffer creation
@@ -146,9 +146,7 @@ std::uint32_t application_base::acquire() {
     _device.logical().resetFences(*fence);
 
     auto [rv, index] = _swapchain.acquire_next(-1, semaphore);
-    if (rv != vk::Result::eSuccess) {
-        fmt::print("acquire err: {}\n", vk::to_string(rv));
-    }
+    if (rv != vk::Result::eSuccess) {}
 
     return index;
 }
@@ -166,9 +164,7 @@ void application_base::present(std::uint32_t index) {
 
     vk::PresentInfoKHR present_info{*render_finished_semaphore, _swapchain.get(), index};
     auto rv = _present_queue.presentKHR(present_info);
-    if (rv != vk::Result::eSuccess) {
-        fmt::print("present err: {}\n", vk::to_string(rv));
-    }
+    if (rv != vk::Result::eSuccess) {}
 
     _current_frame = (_current_frame + 1) % frames_in_flight;
 }
@@ -246,11 +242,11 @@ void application_base::make_depth_image() {
 bool application_base::loop_handler() {
     _counter.count();
     if (_counter.value()) {
-        _window.set_title(fmt::format("{} - {} fps", _name, _counter.value()));
+        _window->set_title(fmt::format("{} - {} fps", _name, _counter.value()));
         _counter.reset();
     }
 
-    return _window.handle();
+    return true;
 }
 
 application_base::default_pipeline_info::default_pipeline_info() {

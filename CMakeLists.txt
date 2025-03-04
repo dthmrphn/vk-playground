@@ -14,7 +14,7 @@ find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 
-option(USE_WAYLAND_WSI "use native wayland wsi backend" OFF)
+set(WSI "glfw" CACHE STRING "use wsi backend (wayland, xcb, glfw)")
 
 set(libraries common glm::glm fmt::fmt Vulkan::Vulkan stblib)
 

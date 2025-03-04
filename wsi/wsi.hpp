@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <queue>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -10,18 +12,20 @@ namespace wsi {
 
 namespace event {
 
-struct mouse {
-    struct position {
-        float x;
-        float y;
-    };
+namespace mouse {
 
-    struct button {
-        bool lmb;
-        bool rmb;
-        bool mmb;
-    };
+struct position {
+    float x;
+    float y;
 };
+
+struct button {
+    bool lmb;
+    bool rmb;
+    bool mmb;
+};
+
+} // namespace mouse
 
 struct keyboard {};
 
@@ -30,27 +34,37 @@ struct resize {
     int32_t h;
 };
 
+struct exit {};
+
+using variant = std::variant<std::monostate, mouse::button, mouse::position, keyboard, resize, exit>;
+
 } // namespace event
-
-using event_type = std::variant<std::monostate, event::mouse::button, event::mouse::position, event::keyboard, event::resize>;
-
-struct platform;
 
 class window {
   public:
-    window(std::size_t width, std::size_t height, const std::string& name);
-    ~window();
+    virtual ~window() = default;
 
-    VkSurfaceKHR create_surface(VkInstance instance) const;
-    static std::vector<const char*> required_extensions();
+    virtual VkSurfaceKHR create_surface(VkInstance instance) const = 0;
+    virtual void set_title(std::string_view name) = 0;
 
-    bool handle() const;
-    event_type handle_event();
+    virtual event::variant poll_event() {
+        poll();
+        if (_events.size()) {
+            const auto e = _events.front();
+            _events.pop();
+            return e;
+        }
 
-    void set_title(const std::string& name);
+        return {};
+    }
 
-  private:
-    std::unique_ptr<platform> _impl;
+  protected:
+    virtual void poll() = 0;
+
+    std::queue<event::variant> _events;
 };
+
+std::vector<const char*> required_extensions();
+std::unique_ptr<window> make_window(std::size_t width, std::size_t height, std::string_view name);
 
 } // namespace wsi
