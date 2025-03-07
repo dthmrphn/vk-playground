@@ -1,3 +1,5 @@
+#include <fmt/base.h>
+#include <mutex>
 #include <vulkan/utility/vk_dispatch_table.h>
 #include <vulkan/vk_layer.h>
 
@@ -18,8 +20,11 @@ struct instance_data {
 };
 
 struct device_data {
-    VkPhysicalDevice gpu;
     VkuDeviceDispatchTable table;
+
+    PFN_vkSetDeviceLoaderData set_device_loader_data;
+
+    VkPhysicalDevice gpu;
 
     VkCommandPool cmd_pool;
     VkCommandBuffer cmd_buf;
@@ -42,12 +47,21 @@ struct swapchain_data {
     std::vector<VkFramebuffer> framebuffers;
 };
 
-std::unordered_map<void*, instance_data> g_instance_data;
-std::unordered_map<void*, device_data> g_device_data;
-std::unordered_map<void*, queue_data> g_queue_data;
-std::unordered_map<void*, swapchain_data> g_swapchain_data;
+struct dispatch_data {
+    VkuDeviceDispatchTable table;
+};
 
-void* get_key(const void* object) { return *(void**)object; }
+static std::mutex g_mutex;
+
+static std::unordered_map<void*, instance_data> g_instance_data;
+static std::unordered_map<void*, device_data> g_device_data;
+static std::unordered_map<void*, queue_data> g_queue_data;
+static std::unordered_map<void*, swapchain_data> g_swapchain_data;
+static std::unordered_map<void*, dispatch_data> g_dispatch_data;
+
+void* get_key(const void* object) {
+    return *(void**)object;
+}
 
 VkLayerInstanceCreateInfo* layer_create_info(const VkInstanceCreateInfo* ici, VkLayerFunction f) {
     VkLayerInstanceCreateInfo* ci = (VkLayerInstanceCreateInfo*)ici->pNext;
@@ -66,6 +80,8 @@ VkLayerDeviceCreateInfo* layer_create_info(const VkDeviceCreateInfo* dci, VkLaye
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkInstance* pInstance) {
+    std::lock_guard lg{g_mutex};
+
     auto lci = layer_create_info(pCreateInfo, VK_LAYER_LINK_INFO);
     if (lci == nullptr) {
         return VK_ERROR_INITIALIZATION_FAILED;
@@ -85,16 +101,20 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
 
     VkuInstanceDispatchTable table{};
     vkuInitInstanceDispatchTable(*pInstance, &table, gipa);
-    g_instance_data[get_key(*pInstance)] = {table};
+    g_instance_data[*pInstance] = {table};
 
     return rv;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator) {
-    g_instance_data[get_key(instance)].table.DestroyInstance(instance, pAllocator);
+    std::lock_guard lg{g_mutex};
+
+    g_instance_data[instance].table.DestroyInstance(instance, pAllocator);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDevice* pDevice) {
+    std::lock_guard lg{g_mutex};
+
     auto lci = layer_create_info(pCreateInfo, VK_LAYER_LINK_INFO);
     if (lci == nullptr) {
         return VK_ERROR_INITIALIZATION_FAILED;
@@ -114,11 +134,17 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, c
         return rv;
     }
 
+    lci = layer_create_info(pCreateInfo, VK_LOADER_DATA_CALLBACK);
+    if (lci == nullptr) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+
     VkuDeviceDispatchTable table{};
     vkuInitDeviceDispatchTable(*pDevice, &table, gdpa);
-    auto& data = g_device_data[get_key(*pDevice)];
+    auto& data = g_device_data[*pDevice];
     data.gpu = physicalDevice;
     data.table = table;
+    data.set_device_loader_data = lci->u.pfnSetDeviceLoaderData;
 
     VkCommandPoolCreateInfo cpci{};
     cpci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -132,34 +158,42 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, c
     cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cbai.commandBufferCount = 1;
     table.AllocateCommandBuffers(*pDevice, &cbai, &data.cmd_buf);
+    data.set_device_loader_data(*pDevice, data.cmd_buf);
 
-    VkSemaphoreCreateInfo si = {};
+    VkSemaphoreCreateInfo si{};
     si.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     table.CreateSemaphore(*pDevice, &si, pAllocator, &data.semaphore);
 
-    VkFenceCreateInfo fi = {};
+    VkFenceCreateInfo fi{};
     fi.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fi.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     table.CreateFence(*pDevice, &fi, pAllocator, &data.fence);
 
     return rv;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) {
-    const auto& data = g_device_data[get_key(device)];
+    std::lock_guard lg{g_mutex};
+
+    const auto& data = g_device_data[device];
     const auto& table = data.table;
 
     table.DestroySemaphore(device, data.semaphore, pAllocator);
     table.DestroyFence(device, data.fence, pAllocator);
     table.FreeCommandBuffers(device, data.cmd_pool, 1, &data.cmd_buf);
     table.DestroyCommandPool(device, data.cmd_pool, pAllocator);
+
+    table.DestroyDevice(device, pAllocator);
 }
 
 VKAPI_PTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
-    const auto& table = g_device_data[get_key(device)].table;
+    std::lock_guard lg{g_mutex};
+
+    const auto& table = g_device_data[device].table;
 
     const auto rv = table.CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
     if (rv == VK_SUCCESS) {
-        auto& sd = g_swapchain_data[get_key(pSwapchain)];
+        auto& sd = g_swapchain_data[*pSwapchain];
 
         VkAttachmentDescription attach_desc{};
         attach_desc.format = pCreateInfo->imageFormat;
@@ -234,11 +268,13 @@ VKAPI_PTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwap
 }
 
 VKAPI_PTR void VKAPI_CALL vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
-    auto& sd = g_swapchain_data[get_key(&swapchain)];
-    const auto& table = g_device_data[get_key(device)].table;
+    std::lock_guard lg{g_mutex};
 
-    for (auto& i : sd.image_views) {
-        table.DestroyImageView(device, i, pAllocator);
+    auto& sd = g_swapchain_data[swapchain];
+    const auto& table = g_device_data[device].table;
+
+    for (auto& iv : sd.image_views) {
+        table.DestroyImageView(device, iv, pAllocator);
     }
 
     for (auto& fb : sd.framebuffers) {
@@ -251,7 +287,10 @@ VKAPI_PTR void VKAPI_CALL vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR 
 }
 
 VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
-    const auto& data = g_device_data[get_key(queue)];
+    std::lock_guard lg{g_mutex};
+
+    const auto device = g_queue_data[queue].device;
+    const auto& data = g_device_data[device];
     const auto& table = data.table;
 
     VkResult rv{VK_SUCCESS};
@@ -259,13 +298,40 @@ VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentIn
     for (std::size_t i = 0; i < pPresentInfo->swapchainCount; ++i) {
         auto swapchain = pPresentInfo->pSwapchains[i];
         auto image_index = pPresentInfo->pImageIndices[i];
-        auto sd = g_swapchain_data[get_key(&swapchain)];
+        auto sd = g_swapchain_data[swapchain];
+
+        while (VK_TIMEOUT == table.WaitForFences(device, 1, &data.fence, VK_TRUE, -1)) {
+        }
+        table.ResetFences(device, 1, &data.fence);
 
         table.ResetCommandBuffer(data.cmd_buf, 0);
 
         VkCommandBufferBeginInfo cbbi{};
         cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         table.BeginCommandBuffer(data.cmd_buf, &cbbi);
+
+        VkImageMemoryBarrier imb;
+        imb.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        imb.pNext = nullptr;
+        imb.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        imb.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        imb.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        imb.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        imb.image = sd.images[image_index];
+        imb.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imb.subresourceRange.baseMipLevel = 0;
+        imb.subresourceRange.levelCount = 1;
+        imb.subresourceRange.baseArrayLayer = 0;
+        imb.subresourceRange.layerCount = 1;
+        imb.srcQueueFamilyIndex = 0;
+        imb.dstQueueFamilyIndex = 0;
+        table.CmdPipelineBarrier(data.cmd_buf,
+                                 VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                                 VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+                                 0,          /* dependency flags */
+                                 0, nullptr, /* memory barriers */
+                                 0, nullptr, /* buffer memory barriers */
+                                 1, &imb);   /* image memory barriers */
 
         VkRenderPassBeginInfo rpbi{};
         rpbi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -295,7 +361,7 @@ VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentIn
         si.pWaitSemaphores = pPresentInfo->pWaitSemaphores;
         si.signalSemaphoreCount = 1;
         si.pSignalSemaphores = &data.semaphore;
-        table.QueueSubmit(queue, 1, &si, nullptr);
+        table.QueueSubmit(queue, 1, &si, data.fence);
 
         VkPresentInfoKHR pi = *pPresentInfo;
         pi.swapchainCount = 1;
@@ -311,13 +377,13 @@ VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentIn
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue) {
-    const auto& table = g_device_data[get_key(device)].table;
+    std::lock_guard lg{g_mutex};
+
+    const auto& table = g_device_data[device].table;
 
     table.GetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
 
-    fmt::print("get queue: {}, device: {}\n", (void*)*pQueue, (void*)device);
-
-    g_queue_data[get_key(*pQueue)] = {device, queueIndex, queueFamilyIndex};
+    g_queue_data[*pQueue] = {device, queueIndex, queueFamilyIndex};
 }
 
 } // namespace layer
@@ -336,12 +402,17 @@ EXPORT_FUNCTION VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(V
 
     HOOK(vkCreateInstance);
     HOOK(vkDestroyInstance);
+
     HOOK(vkCreateDevice);
+    HOOK(vkDestroyDevice);
+
     HOOK(vkCreateSwapchainKHR);
     HOOK(vkDestroySwapchainKHR);
-    HOOK(vkQueuePresentKHR);
 
-    return layer::g_instance_data[layer::get_key(inst)].table.GetInstanceProcAddr(inst, name);
+    HOOK(vkQueuePresentKHR);
+    HOOK(vkGetDeviceQueue);
+
+    return layer::g_instance_data[inst].table.GetInstanceProcAddr(inst, name);
 }
 
 EXPORT_FUNCTION VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice dev, const char* name) {
@@ -351,12 +422,14 @@ EXPORT_FUNCTION VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkD
 
     HOOK(vkCreateDevice);
     HOOK(vkDestroyDevice);
+
     HOOK(vkCreateSwapchainKHR);
     HOOK(vkDestroySwapchainKHR);
+
     HOOK(vkQueuePresentKHR);
     HOOK(vkGetDeviceQueue);
 
-    return layer::g_device_data[layer::get_key(dev)].table.GetDeviceProcAddr(dev, name);
+    return layer::g_device_data[dev].table.GetDeviceProcAddr(dev, name);
 }
 
 #undef HOOK
