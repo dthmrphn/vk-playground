@@ -383,7 +383,7 @@ void swapchain::resize(const device& device, std::uint32_t w, std::uint32_t h) {
 
     const auto pre_transform = capabilities.currentTransform;
     const auto composite_alpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-    const auto present_mode = vk::PresentModeKHR::eMailbox;
+    const auto present_mode = vk::PresentModeKHR::eFifo;
 
     vk::SwapchainCreateInfoKHR sci{
         {},

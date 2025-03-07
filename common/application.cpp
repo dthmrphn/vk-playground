@@ -2,10 +2,6 @@
 
 #include <fmt/core.h>
 
-constexpr static const char* enabled_layers[] = {
-    "VK_LAYER_KHRONOS_validation",
-};
-
 constexpr static const char* device_extensions[] = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
@@ -15,15 +11,21 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     : _name(app_info.pApplicationName), _window(wsi::make_window(w, h, _name)) {
     // device creation
     auto extensions = wsi::required_extensions();
-    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    auto layers = std::vector<const char*>{};
+
+    constexpr bool debug = false;
+    if (debug) {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        layers.push_back("VK_LAYER_KHRONOS_validation");
+    }
 
     _device = vulkan::device{
         app_info,
-        enabled_layers,
+        layers,
         device_extensions,
         extensions,
         vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,
-        true,
+        debug,
     };
 
     // queue creation
@@ -134,7 +136,7 @@ application_base::application_base(const vk::ApplicationInfo& app_info, std::uin
     oci.render_pass = *_render_pass;
     oci.img_count_min = _swapchain.image_views().size();
     oci.img_count = oci.img_count_min + 1;
-       
+
     _overlay = overlay{oci, w, h};
 }
 
@@ -146,7 +148,8 @@ std::uint32_t application_base::acquire() {
     _device.logical().resetFences(*fence);
 
     auto [rv, index] = _swapchain.acquire_next(-1, semaphore);
-    if (rv != vk::Result::eSuccess) {}
+    if (rv != vk::Result::eSuccess) {
+    }
 
     return index;
 }
@@ -164,7 +167,8 @@ void application_base::present(std::uint32_t index) {
 
     vk::PresentInfoKHR present_info{*render_finished_semaphore, _swapchain.get(), index};
     auto rv = _present_queue.presentKHR(present_info);
-    if (rv != vk::Result::eSuccess) {}
+    if (rv != vk::Result::eSuccess) {
+    }
 
     _current_frame = (_current_frame + 1) % frames_in_flight;
 }
