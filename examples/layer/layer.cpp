@@ -51,6 +51,10 @@ struct dispatch_data {
     VkuDeviceDispatchTable table;
 };
 
+struct physical_device_data {
+    VkInstance instance;
+};
+
 static std::mutex g_mutex;
 
 static std::unordered_map<void*, instance_data> g_instance_data;
@@ -58,12 +62,13 @@ static std::unordered_map<void*, device_data> g_device_data;
 static std::unordered_map<void*, queue_data> g_queue_data;
 static std::unordered_map<void*, swapchain_data> g_swapchain_data;
 static std::unordered_map<void*, dispatch_data> g_dispatch_data;
+static std::unordered_map<void*, physical_device_data> g_physical_device_data;
 
 void* get_key(const void* object) {
     return *(void**)object;
 }
 
-VkLayerInstanceCreateInfo* layer_create_info(const VkInstanceCreateInfo* ici, VkLayerFunction f) {
+static VkLayerInstanceCreateInfo* layer_create_info(const VkInstanceCreateInfo* ici, VkLayerFunction f) {
     VkLayerInstanceCreateInfo* ci = (VkLayerInstanceCreateInfo*)ici->pNext;
     while (ci && (ci->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO || ci->function != f)) {
         ci = (VkLayerInstanceCreateInfo*)ci->pNext;
@@ -71,13 +76,15 @@ VkLayerInstanceCreateInfo* layer_create_info(const VkInstanceCreateInfo* ici, Vk
     return ci;
 }
 
-VkLayerDeviceCreateInfo* layer_create_info(const VkDeviceCreateInfo* dci, VkLayerFunction f) {
+static VkLayerDeviceCreateInfo* layer_create_info(const VkDeviceCreateInfo* dci, VkLayerFunction f) {
     VkLayerDeviceCreateInfo* ci = (VkLayerDeviceCreateInfo*)dci->pNext;
     while (ci && (ci->sType != VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO || ci->function != f)) {
         ci = (VkLayerDeviceCreateInfo*)ci->pNext;
     }
     return ci;
 }
+
+static PFN_vkVoidFunction load_funcs(const char* name, void* data);
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkInstance* pInstance) {
     std::lock_guard lg{g_mutex};
@@ -102,6 +109,15 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
     VkuInstanceDispatchTable table{};
     vkuInitInstanceDispatchTable(*pInstance, &table, gipa);
     g_instance_data[*pInstance] = {table};
+
+    std::uint32_t count{};
+    table.EnumeratePhysicalDevices(*pInstance, &count, nullptr);
+    std::vector<VkPhysicalDevice> gpus{count};
+    table.EnumeratePhysicalDevices(*pInstance, &count, gpus.data());
+
+    for (const auto& gpu : gpus) {
+        g_physical_device_data[gpu] = {*pInstance};
+    }
 
     return rv;
 }
@@ -430,6 +446,10 @@ EXPORT_FUNCTION VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkD
     HOOK(vkGetDeviceQueue);
 
     return layer::g_device_data[dev].table.GetDeviceProcAddr(dev, name);
+}
+
+static PFN_vkVoidFunction layer::load_funcs(const char* name, void* data) {
+    return vkGetInstanceProcAddr(static_cast<VkInstance>(data), name);
 }
 
 #undef HOOK
