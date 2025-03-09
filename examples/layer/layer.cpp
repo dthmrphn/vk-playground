@@ -766,8 +766,7 @@ VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentIn
         auto sd = g_swapchain_mapping[swapchain];
 
         ImGui::NewFrame();
-        ImGui::Begin("overlay layer", nullptr);
-        ImGui::End();
+        ImGui::ShowDemoWindow();
         ImGui::Render();
 
         const auto draw_data = ImGui::GetDrawData();
