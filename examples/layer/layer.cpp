@@ -19,17 +19,30 @@
 
 namespace layer {
 
+template <typename KeyType, typename ValueType>
+class mapping {
+    std::unordered_map<KeyType, ValueType> _map;
+    std::mutex _mutex;
+
+  public:
+    mapping() = default;
+
+    ValueType& operator[](const KeyType& key) {
+        std::lock_guard lg{_mutex};
+        return _map[key];
+    }
+};
+
 struct instance_data {
-    VkuInstanceDispatchTable table;
+    VkuInstanceDispatchTable table{};
 };
 
 struct device_data {
-    VkuDeviceDispatchTable table;
-
-    PFN_vkSetDeviceLoaderData set_device_loader_data;
+    VkuDeviceDispatchTable table{};
+    PFN_vkSetDeviceLoaderData set_device_loader_data{};
 
     VkPhysicalDevice gpu{nullptr};
-    VkPhysicalDeviceProperties props;
+    VkPhysicalDeviceProperties props{};
 
     VkCommandPool cmd_pool{nullptr};
     VkCommandBuffer cmd_buf{nullptr};
@@ -66,7 +79,6 @@ struct queue_data {
 
 struct swapchain_data {
     VkRenderPass render_pass{nullptr};
-
     VkPipeline pipeline{nullptr};
 
     std::vector<VkImage> images;
@@ -82,22 +94,20 @@ struct physical_device_data {
     VkInstance instance{nullptr};
 };
 
-static std::mutex g_mutex;
-
-static std::unordered_map<void*, instance_data> g_instance_data;
-static std::unordered_map<void*, device_data> g_device_data;
-static std::unordered_map<void*, queue_data> g_queue_data;
-static std::unordered_map<void*, swapchain_data> g_swapchain_data;
-static std::unordered_map<void*, dispatch_data> g_dispatch_data;
-static std::unordered_map<void*, physical_device_data> g_physical_device_data;
+static mapping<VkInstance, instance_data> g_instance_mapping;
+static mapping<VkPhysicalDevice, physical_device_data> g_physical_device_mapping;
+static mapping<VkDevice, device_data> g_device_mapping;
+static mapping<VkQueue, queue_data> g_queue_mapping;
+static mapping<VkSwapchainKHR, swapchain_data> g_swapchain_mapping;
+static mapping<void*, dispatch_data> g_dispatch_mapping;
 
 void* get_key(const void* object) {
     return *(void**)object;
 }
 
 static std::uint32_t memory_type_index(VkPhysicalDevice gpu, std::uint32_t filter, VkMemoryPropertyFlags mask) {
-    const auto instance = g_physical_device_data[gpu].instance;
-    const auto& table = g_instance_data[instance].table;
+    const auto instance = g_physical_device_mapping[gpu].instance;
+    const auto& table = g_instance_mapping[instance].table;
 
     VkPhysicalDeviceMemoryProperties props{};
     table.GetPhysicalDeviceMemoryProperties(gpu, &props);
@@ -111,8 +121,8 @@ static std::uint32_t memory_type_index(VkPhysicalDevice gpu, std::uint32_t filte
 }
 
 static std::uint32_t queue_family_index(VkPhysicalDevice gpu, VkQueueFlags flags) {
-    const auto instance = g_physical_device_data[gpu].instance;
-    const auto& table = g_instance_data[instance].table;
+    const auto instance = g_physical_device_mapping[gpu].instance;
+    const auto& table = g_instance_mapping[instance].table;
 
     std::uint32_t count{};
     table.GetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
@@ -131,7 +141,7 @@ static VkDeviceSize align_size(VkDeviceSize size, VkDeviceSize alignment) {
 }
 
 static void create_buffer(VkDevice device, VkBuffer* buf, VkDeviceMemory* mem, VkDeviceSize size, VkBufferUsageFlags usage) {
-    const auto& data = g_device_data[device];
+    const auto& data = g_device_mapping[device];
     const auto& table = data.table;
 
     VkBufferCreateInfo bci{};
@@ -152,7 +162,7 @@ static void create_buffer(VkDevice device, VkBuffer* buf, VkDeviceMemory* mem, V
 }
 
 static void resize_buffer(VkDevice device, VkBuffer* buf, VkDeviceMemory* mem, VkDeviceSize size, VkBufferUsageFlags usage) {
-    const auto& table = g_device_data[device].table;
+    const auto& table = g_device_mapping[device].table;
     if (buf) {
         table.DestroyBuffer(device, *buf, nullptr);
     }
@@ -172,7 +182,7 @@ static void upload_fonts(VkDevice device) {
     io.Fonts->GetTexDataAsRGBA32(&font_data, &tex_width, &tex_height);
     VkDeviceSize upload_size = tex_width * tex_height * 4 * sizeof(char);
 
-    const auto& data = g_device_data[device];
+    const auto& data = g_device_mapping[device];
     const auto& table = data.table;
 
     VkBuffer staging_buf;
@@ -276,8 +286,6 @@ static VkLayerDeviceCreateInfo* layer_create_info(const VkDeviceCreateInfo* dci,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkInstance* pInstance) {
-    std::lock_guard lg{g_mutex};
-
     auto lci = layer_create_info(pCreateInfo, VK_LAYER_LINK_INFO);
     if (lci == nullptr) {
         return VK_ERROR_INITIALIZATION_FAILED;
@@ -297,7 +305,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
 
     VkuInstanceDispatchTable table{};
     vkuInitInstanceDispatchTable(*pInstance, &table, gipa);
-    g_instance_data[*pInstance] = {table};
+    g_instance_mapping[*pInstance] = {table};
 
     std::uint32_t count{};
     table.EnumeratePhysicalDevices(*pInstance, &count, nullptr);
@@ -305,7 +313,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
     table.EnumeratePhysicalDevices(*pInstance, &count, gpus.data());
 
     for (const auto& gpu : gpus) {
-        g_physical_device_data[gpu] = {*pInstance};
+        g_physical_device_mapping[gpu] = {*pInstance};
     }
 
     ImGui::CreateContext();
@@ -315,19 +323,17 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
 }
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator) {
-    std::lock_guard lg{g_mutex};
-
     ImGui::DestroyContext();
 
-    g_instance_data[instance].table.DestroyInstance(instance, pAllocator);
+    g_instance_mapping[instance].table.DestroyInstance(instance, pAllocator);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkEnumeratePhysicalDevices(VkInstance instance, uint32_t* pPhysicalDeviceCount, VkPhysicalDevice* pPhysicalDevices) {
-    const auto& table = g_instance_data[instance].table;
+    const auto& table = g_instance_mapping[instance].table;
     const auto rv = table.EnumeratePhysicalDevices(instance, pPhysicalDeviceCount, pPhysicalDevices);
     if (rv == VK_SUCCESS && pPhysicalDevices) {
         for (uint32_t i = 0; i < *pPhysicalDeviceCount; i++) {
-            g_physical_device_data[pPhysicalDevices[i]] = {instance};
+            g_physical_device_mapping[pPhysicalDevices[i]] = {instance};
         }
     }
 
@@ -335,8 +341,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumeratePhysicalDevices(VkInstance instance, u
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDevice* pDevice) {
-    std::lock_guard lg{g_mutex};
-
     auto lci = layer_create_info(pCreateInfo, VK_LAYER_LINK_INFO);
     if (lci == nullptr) {
         return VK_ERROR_INITIALIZATION_FAILED;
@@ -363,13 +367,13 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, c
 
     VkuDeviceDispatchTable table{};
     vkuInitDeviceDispatchTable(*pDevice, &table, gdpa);
-    auto& data = g_device_data[*pDevice];
+    auto& data = g_device_mapping[*pDevice];
     data.gpu = physicalDevice;
     data.table = table;
     data.set_device_loader_data = lci->u.pfnSetDeviceLoaderData;
 
-    const auto instance = g_physical_device_data[physicalDevice].instance;
-    g_instance_data[instance].table.GetPhysicalDeviceProperties(physicalDevice, &data.props);
+    const auto instance = g_physical_device_mapping[physicalDevice].instance;
+    g_instance_mapping[instance].table.GetPhysicalDeviceProperties(physicalDevice, &data.props);
 
     VkCommandPoolCreateInfo cpci{};
     cpci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -509,9 +513,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, c
 }
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) {
-    std::lock_guard lg{g_mutex};
-
-    const auto& data = g_device_data[device];
+    const auto& data = g_device_mapping[device];
     const auto& table = data.table;
 
     table.FreeMemory(device, data.index_buffer_mem, nullptr);
@@ -534,9 +536,7 @@ VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCa
 }
 
 VKAPI_PTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
-    std::lock_guard lg{g_mutex};
-
-    const auto& dd = g_device_data[device];
+    const auto& dd = g_device_mapping[device];
     const auto& table = dd.table;
 
     ImGuiIO& io = ImGui::GetIO();
@@ -545,7 +545,7 @@ VKAPI_PTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwap
 
     const auto rv = table.CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
     if (rv == VK_SUCCESS) {
-        auto& sd = g_swapchain_data[*pSwapchain];
+        auto& sd = g_swapchain_mapping[*pSwapchain];
 
         VkAttachmentDescription attach_desc{};
         attach_desc.format = pCreateInfo->imageFormat;
@@ -735,10 +735,8 @@ VKAPI_PTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwap
 }
 
 VKAPI_PTR void VKAPI_CALL vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
-    std::lock_guard lg{g_mutex};
-
-    auto& sd = g_swapchain_data[swapchain];
-    const auto& table = g_device_data[device].table;
+    auto& sd = g_swapchain_mapping[swapchain];
+    const auto& table = g_device_mapping[device].table;
 
     table.DestroyPipeline(device, sd.pipeline, pAllocator);
 
@@ -756,10 +754,8 @@ VKAPI_PTR void VKAPI_CALL vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR 
 }
 
 VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
-    std::lock_guard lg{g_mutex};
-
-    const auto device = g_queue_data[queue].device;
-    auto& data = g_device_data[device];
+    const auto device = g_queue_mapping[queue].device;
+    auto& data = g_device_mapping[device];
     const auto& table = data.table;
 
     VkResult rv{VK_SUCCESS};
@@ -767,7 +763,7 @@ VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentIn
     for (std::size_t i = 0; i < pPresentInfo->swapchainCount; ++i) {
         auto swapchain = pPresentInfo->pSwapchains[i];
         auto image_index = pPresentInfo->pImageIndices[i];
-        auto sd = g_swapchain_data[swapchain];
+        auto sd = g_swapchain_mapping[swapchain];
 
         ImGui::NewFrame();
         ImGui::Begin("overlay layer", nullptr);
@@ -945,13 +941,11 @@ VKAPI_PTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentIn
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue) {
-    std::lock_guard lg{g_mutex};
-
-    const auto& table = g_device_data[device].table;
+    const auto& table = g_device_mapping[device].table;
 
     table.GetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
 
-    g_queue_data[*pQueue] = {device, queueIndex, queueFamilyIndex};
+    g_queue_mapping[*pQueue] = {device, queueIndex, queueFamilyIndex};
 }
 
 } // namespace layer
@@ -982,7 +976,7 @@ EXPORT_FUNCTION VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(V
     HOOK(vkQueuePresentKHR);
     HOOK(vkGetDeviceQueue);
 
-    return layer::g_instance_data[inst].table.GetInstanceProcAddr(inst, name);
+    return layer::g_instance_mapping[inst].table.GetInstanceProcAddr(inst, name);
 }
 
 EXPORT_FUNCTION VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice dev, const char* name) {
@@ -999,7 +993,7 @@ EXPORT_FUNCTION VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkD
     HOOK(vkQueuePresentKHR);
     HOOK(vkGetDeviceQueue);
 
-    return layer::g_device_data[dev].table.GetDeviceProcAddr(dev, name);
+    return layer::g_device_mapping[dev].table.GetDeviceProcAddr(dev, name);
 }
 
 #undef HOOK
