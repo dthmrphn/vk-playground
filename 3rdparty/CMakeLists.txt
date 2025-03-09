@@ -7,6 +7,7 @@ add_library(imguilib STATIC
     imgui/imgui_widgets.cpp
 )
 target_include_directories(imguilib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_property(TARGET imguilib PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 add_library(stblib INTERFACE)
 target_include_directories(stblib INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
